@@ -5,6 +5,7 @@ local terminal = require("agents.terminal")
 local M = {}
 
 local actions = { "open", "resume", "continue", "toggle", "stop", "health" }
+local registered_toggle_mapping = nil
 
 local function notify(message, level)
   vim.notify(message, level or vim.log.levels.INFO, { title = "agents.nvim" })
@@ -29,6 +30,7 @@ local function start(action, provider_name, options)
     provider = provider_name,
     cwd = config.options.cwd or vim.fn.getcwd(),
     window = config.options.window,
+    mappings = config.options.mappings,
   })
 end
 
@@ -103,6 +105,19 @@ function M.register()
     desc = "Manage coding-agent CLI sessions",
     force = true,
   })
+
+  if registered_toggle_mapping then
+    pcall(vim.keymap.del, "n", registered_toggle_mapping)
+  end
+  registered_toggle_mapping = config.options.mappings.toggle or nil
+  if registered_toggle_mapping then
+    vim.keymap.set("n", registered_toggle_mapping, function()
+      M.execute({ "toggle" })
+    end, {
+      desc = "Toggle agent terminal",
+      silent = true,
+    })
+  end
 end
 
 return M

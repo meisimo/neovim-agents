@@ -43,6 +43,28 @@ local function open_window(window_config)
   end
 end
 
+local function set_terminal_mappings(buffer, mappings)
+  mappings = mappings or {}
+
+  if mappings.toggle then
+    vim.keymap.set("t", mappings.toggle, function()
+      M.toggle(require("agents.config").options.window)
+    end, {
+      buffer = buffer,
+      desc = "Toggle agent terminal",
+      silent = true,
+    })
+  end
+
+  if mappings.escape then
+    vim.keymap.set("t", mappings.escape, [[<C-\><C-n>]], {
+      buffer = buffer,
+      desc = "Enter Terminal-Normal mode",
+      silent = true,
+    })
+  end
+end
+
 function M.open(command, options)
   M.stop()
   open_window(options.window)
@@ -53,6 +75,7 @@ function M.open(command, options)
   vim.api.nvim_win_set_buf(0, buffer)
   vim.api.nvim_buf_set_name(buffer, ("agents://%s"):format(options.provider))
   vim.bo[buffer].bufhidden = "hide"
+  set_terminal_mappings(buffer, options.mappings)
 
   state.job = vim.fn.termopen(command, {
     cwd = options.cwd,

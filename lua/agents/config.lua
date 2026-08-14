@@ -7,6 +7,10 @@ M.defaults = {
     position = "right",
     size = 0.4,
   },
+  mappings = {
+    toggle = "<C-f><C-f>",
+    escape = "<C-f>f",
+  },
   providers = {
     claude = {
       command = "claude",
@@ -23,4 +27,3 @@ function M.setup(options)
 end
 
 return M
-

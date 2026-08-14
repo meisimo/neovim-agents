@@ -51,6 +51,10 @@ require("agents").setup({
     position = "right", -- right, left, top, or bottom
     size = 0.4,         -- fraction of the editor, or an absolute size
   },
+  mappings = {
+    toggle = "<C-f><C-f>", -- Show or hide the terminal, preserving its session
+    escape = "<C-f>f",     -- Enter Neovim's Terminal-Normal mode
+  },
   providers = {
     claude = {
       command = "claude",
@@ -59,6 +63,10 @@ require("agents").setup({
   },
 })
 ```
+
+The toggle mapping works in normal buffers and in the agent terminal, but does not affect other
+terminal windows. The escape mapping is local to the agent terminal. Set either value to `false`
+to disable that mapping. After using the escape mapping, press `i` to send input to the agent again.
 
 ## Commands
 
