@@ -5,6 +5,9 @@ local function assert_equal(expected, actual)
 end
 
 local claude = require("agents.providers.claude")
+local codex = require("agents.providers.codex")
+local providers = require("agents.providers")
+local adapter = require("agents.providers.adapter")
 
 assert_equal({ "claude" }, claude.build_command("open", {}, { command = "claude" }))
 assert_equal(
@@ -19,6 +22,40 @@ assert_equal(
   { "custom-claude", "--verbose", "--continue" },
   claude.build_command("continue", {}, { command = "custom-claude", args = { "--verbose" } })
 )
+assert_equal(true, claude.supports("resume"))
+assert_equal(false, claude.supports("fork"))
+
+assert_equal({ "codex" }, codex.build_command("open", {}, { command = "codex" }))
+assert_equal({ "codex", "resume" }, codex.build_command("resume", {}, { command = "codex" }))
+assert_equal(
+  { "codex", "resume", "session-456" },
+  codex.build_command("resume", { session_id = "session-456" }, { command = "codex" })
+)
+assert_equal(
+  { "custom-codex", "--no-alt-screen", "resume", "--last" },
+  codex.build_command(
+    "continue",
+    {},
+    { command = "custom-codex", args = { "--no-alt-screen" } }
+  )
+)
+assert_equal({ "claude", "codex" }, providers.names())
+
+local example = adapter.new({
+  name = "example",
+  command = "example-agent",
+  actions = {
+    open = function()
+      return { "chat" }
+    end,
+  },
+})
+providers.register("example", example)
+assert_equal(
+  { "example-agent", "--color", "chat" },
+  providers.get("example").build_command("open", {}, { args = { "--color" } })
+)
+assert_equal({ "claude", "codex", "example" }, providers.names())
 
 local agents = require("agents")
 agents.setup()
@@ -32,6 +69,24 @@ assert_equal(2, vim.fn.exists(":Agents"))
 assert_equal("function", type(agents.open))
 assert_equal("function", type(agents.resume))
 assert_equal("function", type(agents.continue))
+
+local commands = require("agents.commands")
+assert_equal(
+  { action = "open", provider = "codex" },
+  commands.parse({ "open", "codex" })
+)
+assert_equal(
+  { action = "resume", provider = "codex", session_id = "session-456" },
+  commands.parse({ "resume", "codex", "session-456" })
+)
+assert_equal(
+  { action = "resume", provider = "claude", session_id = "session-123" },
+  commands.parse({ "resume", "session-123" })
+)
+assert_equal(
+  { action = "continue", provider = "codex" },
+  commands.parse({ "continue", "codex" })
+)
 
 local terminal = require("agents.terminal")
 terminal.open({ vim.o.shell }, {

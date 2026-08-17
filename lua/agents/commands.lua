@@ -22,8 +22,12 @@ end
 local function start(action, provider_name, options)
   local provider = providers.get(provider_name)
   local provider_options = provider_config(provider_name)
+  if not provider.supports(action) then
+    error(("agents.nvim: provider %q does not support %s"):format(provider_name, action))
+  end
   if not provider.is_available(provider_options) then
-    error(("agents.nvim: executable %q was not found"):format(provider_options.command))
+    local executable = provider_options.command or provider.default_command or provider_name
+    error(("agents.nvim: executable %q was not found"):format(executable))
   end
 
   terminal.open(provider.build_command(action, options, provider_options), {
@@ -34,19 +38,38 @@ local function start(action, provider_name, options)
   })
 end
 
+local function provider_argument(value)
+  if value and providers.has(value) then
+    return value
+  end
+  return nil
+end
+
+function M.parse(arguments)
+  local action = arguments[1]
+  local parsed = { action = action }
+
+  if action == "open" or action == "continue" then
+    parsed.provider = arguments[2] or config.options.default_provider
+  elseif action == "resume" then
+    parsed.provider = provider_argument(arguments[2]) or config.options.default_provider
+    parsed.session_id = parsed.provider == arguments[2] and arguments[3] or arguments[2]
+  end
+
+  return parsed
+end
+
 local function health()
   local lines = {}
   for _, name in ipairs(providers.names()) do
     local provider_options = config.options.providers[name]
     if provider_options then
-      local available = providers.get(name).is_available(provider_options)
+      local provider = providers.get(name)
+      local executable = provider_options.command or provider.default_command or name
+      local available = provider.is_available(provider_options)
       table.insert(
         lines,
-        ("%s: %s (%s)"):format(
-          name,
-          available and "available" or "not found",
-          provider_options.command
-        )
+        ("%s: %s (%s)"):format(name, available and "available" or "not found", executable)
       )
     end
   end
@@ -54,7 +77,8 @@ local function health()
 end
 
 function M.execute(arguments)
-  local action = arguments[1]
+  local parsed = M.parse(arguments)
+  local action = parsed.action
   if not action or action == "" then
     notify("Usage: Agents <open|resume|continue|toggle|stop|health>", vim.log.levels.WARN)
     return
@@ -69,26 +93,32 @@ function M.execute(arguments)
   elseif action == "health" then
     health()
   elseif action == "open" then
-    start(action, arguments[2] or config.options.default_provider, {})
+    start(action, parsed.provider, {})
   elseif action == "resume" then
-    start(action, config.options.default_provider, { session_id = arguments[2] })
+    start(action, parsed.provider, { session_id = parsed.session_id })
   elseif action == "continue" then
-    start(action, config.options.default_provider, {})
+    start(action, parsed.provider, {})
   else
     error(("agents.nvim: unknown action %q"):format(action))
   end
 end
 
-function M.complete(_, command_line)
+local function matching(values, prefix)
+  return vim.tbl_filter(function(item)
+    return vim.startswith(item, prefix)
+  end, values)
+end
+
+function M.complete(argument_lead, command_line)
   local parts = vim.split(command_line, "%s+", { trimempty = true })
   if #parts <= 1 or (#parts == 2 and not command_line:match("%s$")) then
-    local prefix = parts[2] or ""
-    return vim.tbl_filter(function(item)
-      return vim.startswith(item, prefix)
-    end, actions)
+    return matching(actions, argument_lead)
   end
-  if parts[2] == "open" then
-    return providers.names()
+  if
+    (parts[2] == "open" or parts[2] == "resume" or parts[2] == "continue")
+    and (#parts == 2 or (#parts == 3 and not command_line:match("%s$")))
+  then
+    return matching(providers.names(), argument_lead)
   end
   return {}
 end

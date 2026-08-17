@@ -9,12 +9,16 @@ function M.open(provider)
   require("agents.commands").execute({ "open", provider })
 end
 
-function M.resume(session_id)
-  require("agents.commands").execute({ "resume", session_id })
+function M.resume(session_id, provider)
+  if provider then
+    require("agents.commands").execute({ "resume", provider, session_id })
+  else
+    require("agents.commands").execute({ "resume", session_id })
+  end
 end
 
-function M.continue()
-  require("agents.commands").execute({ "continue" })
+function M.continue(provider)
+  require("agents.commands").execute({ "continue", provider })
 end
 
 function M.toggle()

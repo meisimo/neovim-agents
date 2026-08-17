@@ -4,7 +4,8 @@
 INTRODUCTION                                                     *agents-intro*
 
 agents.nvim runs a coding-agent CLI in a Neovim terminal while leaving session
-persistence with the native provider. The initial provider is Claude Code.
+persistence with the native provider. Supported providers are Claude Code and
+Codex CLI.
 
 ==============================================================================
 SETUP                                                               *agents-setup*
@@ -20,6 +21,7 @@ SETUP                                                               *agents-setu
     },
     providers = {
       claude = { command = "claude", args = {} },
+      codex = { command = "codex", args = {} },
     },
   })
 <
@@ -37,11 +39,12 @@ COMMANDS                                                         *agents-command
     Start a new session with the provider.
 
                                                    *:Agents-resume*
-:Agents resume [session-id]
-    Resume a session. With Claude, omitting the ID opens its native picker.
+:Agents resume [provider] [session-id]
+    Resume a session. Omitting the ID opens the provider's native picker. An
+    unrecognized second argument is treated as an ID for the default provider.
 
                                                    *:Agents-continue*
-:Agents continue
+:Agents continue [provider]
     Continue the most recent conversation for the current directory.
 
                                                    *:Agents-toggle*
@@ -59,8 +62,10 @@ COMMANDS                                                         *agents-command
 ==============================================================================
 PROVIDERS                                                       *agents-providers*
 
-A provider implements is_available(config) and
-build_command(action, options, config). build_command returns a list whose first
-element is the executable and remaining elements are its arguments.
+A provider implements is_available(config), supports(action), and
+build_command(action, options, config). build_command returns a list whose
+first element is the executable and remaining elements are its arguments.
+Providers can share the adapter factory in lua/agents/providers/adapter.lua
+and can be registered with require("agents.providers").register().
 
 vim:tw=78:ts=8:noet:ft=help:norl:

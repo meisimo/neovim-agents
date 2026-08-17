@@ -1,21 +1,21 @@
 local adapter = require("agents.providers.adapter")
 
 return adapter.new({
-  name = "claude",
-  command = "claude",
+  name = "codex",
+  command = "codex",
   actions = {
     open = function()
       return {}
     end,
     resume = function(options)
-      local arguments = { "--resume" }
+      local arguments = { "resume" }
       if options.session_id and options.session_id ~= "" then
         table.insert(arguments, options.session_id)
       end
       return arguments
     end,
     continue = function()
-      return { "--continue" }
+      return { "resume", "--last" }
     end,
   },
 })

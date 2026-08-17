@@ -16,6 +16,10 @@ M.defaults = {
       command = "claude",
       args = {},
     },
+    codex = {
+      command = "codex",
+      args = {},
+    },
   },
 }
 
