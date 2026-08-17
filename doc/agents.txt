@@ -14,6 +14,7 @@ SETUP                                                               *agents-setu
   require("agents").setup({
     default_provider = "claude",
     cwd = nil,
+    close_on_exit = true,
     window = { position = "right", size = 0.4 },
     mappings = {
       toggle = "<C-f><C-f>",
@@ -31,12 +32,18 @@ works from Normal mode and the agent terminal. The escape mapping is local to
 the agent terminal and enters Terminal-Normal mode; press |i| to return to
 Terminal mode. Set a mapping to false to disable it.
 
+Each open, resume, or continue action creates a new plugin session. Sessions
+share one sidebar and remain running when hidden. The sidebar winbar displays
+clickable session labels in the form {id}:{provider}; an x marks a stopped or
+exited session. When close_on_exit is true, a natural exit from the active CLI
+hides the sidebar but retains the terminal transcript.
+
 ==============================================================================
 COMMANDS                                                         *agents-commands*
 
                                                    *:Agents-open*
 :Agents open [provider]
-    Start a new session with the provider.
+    Start and select a new session with the provider.
 
                                                    *:Agents-resume*
 :Agents resume [provider] [session-id]
@@ -49,11 +56,29 @@ COMMANDS                                                         *agents-command
 
                                                    *:Agents-toggle*
 :Agents toggle
-    Show or hide the active agent terminal.
+    Show or hide the agent sidebar without stopping any session.
+
+                                                   *:Agents-next*
+:Agents next
+    Select the next session, wrapping at the end.
+
+                                                   *:Agents-prev*
+:Agents prev
+    Select the previous session, wrapping at the beginning.
+
+                                                   *:Agents-select*
+:Agents select [session-id]
+    Select a plugin session. Omitting the ID opens a picker.
 
                                                    *:Agents-stop*
-:Agents stop
-    Stop the active job and remove its terminal buffer.
+:Agents stop [session-id]
+    Stop a session while retaining its terminal transcript. The active session
+    is used when the ID is omitted.
+
+                                                   *:Agents-close*
+:Agents close [session-id]
+    Stop and remove a session and its terminal buffer. The active session is
+    used when the ID is omitted.
 
                                                    *:Agents-health*
 :Agents health

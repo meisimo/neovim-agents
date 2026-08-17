@@ -1,7 +1,7 @@
 *.log
+logs/
 *.swp
 *.swo
 *.tmp
 .DS_Store
 .luacov
-

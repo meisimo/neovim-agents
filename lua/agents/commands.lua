@@ -1,41 +1,31 @@
 local config = require("agents.config")
+local log = require("agents.log")
 local providers = require("agents.providers")
-local terminal = require("agents.terminal")
+local session_manager = require("agents.core.session_manager")
+local sidebar = require("agents.ui.sidebar")
 
 local M = {}
 
-local actions = { "open", "resume", "continue", "toggle", "stop", "health" }
+local actions = {
+  "open",
+  "resume",
+  "continue",
+  "toggle",
+  "stop",
+  "close",
+  "next",
+  "prev",
+  "select",
+  "health",
+}
 local registered_toggle_mapping = nil
 
 local function notify(message, level)
   vim.notify(message, level or vim.log.levels.INFO, { title = "agents.nvim" })
 end
 
-local function provider_config(name)
-  local value = config.options.providers[name]
-  if not value then
-    error(("agents.nvim: provider %q is not configured"):format(name))
-  end
-  return value
-end
-
 local function start(action, provider_name, options)
-  local provider = providers.get(provider_name)
-  local provider_options = provider_config(provider_name)
-  if not provider.supports(action) then
-    error(("agents.nvim: provider %q does not support %s"):format(provider_name, action))
-  end
-  if not provider.is_available(provider_options) then
-    local executable = provider_options.command or provider.default_command or provider_name
-    error(("agents.nvim: executable %q was not found"):format(executable))
-  end
-
-  terminal.open(provider.build_command(action, options, provider_options), {
-    provider = provider_name,
-    cwd = config.options.cwd or vim.fn.getcwd(),
-    window = config.options.window,
-    mappings = config.options.mappings,
-  })
+  return session_manager.get():start(action, provider_name, options)
 end
 
 local function provider_argument(value)
@@ -54,6 +44,8 @@ function M.parse(arguments)
   elseif action == "resume" then
     parsed.provider = provider_argument(arguments[2]) or config.options.default_provider
     parsed.session_id = parsed.provider == arguments[2] and arguments[3] or arguments[2]
+  elseif action == "stop" or action == "close" or action == "select" then
+    parsed.session_id = arguments[2]
   end
 
   return parsed
@@ -80,16 +72,32 @@ function M.execute(arguments)
   local parsed = M.parse(arguments)
   local action = parsed.action
   if not action or action == "" then
-    notify("Usage: Agents <open|resume|continue|toggle|stop|health>", vim.log.levels.WARN)
+    notify(
+      "Usage: Agents <open|resume|continue|toggle|stop|close|next|prev|select|health>",
+      vim.log.levels.WARN
+    )
     return
   end
 
+  local manager = session_manager.get()
   if action == "toggle" then
-    if not terminal.toggle(config.options.window) then
+    if not manager:toggle() then
       start("open", config.options.default_provider, {})
     end
   elseif action == "stop" then
-    terminal.stop()
+    manager:stop(parsed.session_id)
+  elseif action == "close" then
+    manager:close(parsed.session_id)
+  elseif action == "next" then
+    manager:select_next()
+  elseif action == "prev" then
+    manager:select_previous()
+  elseif action == "select" then
+    if parsed.session_id then
+      manager:select(parsed.session_id)
+    else
+      manager:pick()
+    end
   elseif action == "health" then
     health()
   elseif action == "open" then
@@ -101,6 +109,17 @@ function M.execute(arguments)
   else
     error(("agents.nvim: unknown action %q"):format(action))
   end
+end
+
+function M.execute_safe(arguments)
+  local ok, err = xpcall(function()
+    M.execute(arguments)
+  end, debug.traceback)
+  if not ok then
+    log.error(err)
+    notify(err, vim.log.levels.ERROR)
+  end
+  return ok, err
 end
 
 local function matching(values, prefix)
@@ -120,15 +139,23 @@ function M.complete(argument_lead, command_line)
   then
     return matching(providers.names(), argument_lead)
   end
+  if
+    (parts[2] == "select" or parts[2] == "stop" or parts[2] == "close")
+    and (#parts == 2 or (#parts == 3 and not command_line:match("%s$")))
+  then
+    local session_ids = {}
+    for _, session in ipairs(session_manager.get():list()) do
+      table.insert(session_ids, tostring(session.id))
+    end
+    return matching(session_ids, argument_lead)
+  end
   return {}
 end
 
 function M.register()
+  sidebar.install_click_handler()
   vim.api.nvim_create_user_command("Agents", function(options)
-    local ok, err = pcall(M.execute, options.fargs)
-    if not ok then
-      notify(err, vim.log.levels.ERROR)
-    end
+    M.execute_safe(options.fargs)
   end, {
     nargs = "*",
     complete = M.complete,
@@ -142,7 +169,7 @@ function M.register()
   registered_toggle_mapping = config.options.mappings.toggle or nil
   if registered_toggle_mapping then
     vim.keymap.set("n", registered_toggle_mapping, function()
-      M.execute({ "toggle" })
+      M.execute_safe({ "toggle" })
     end, {
       desc = "Toggle agent terminal",
       silent = true,
