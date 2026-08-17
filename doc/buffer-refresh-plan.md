@@ -168,17 +168,27 @@ workspace feature, not an agent lifecycle feature.
 
 Use temporary files and real Neovim buffers in the headless test suite. Cover:
 
-1. A loaded, unmodified buffer observes content changed on disk.
-2. A modified buffer retains its unsaved contents after the disk file changes.
-3. A later check can refresh that buffer after the local changes are intentionally discarded or
-   saved.
-4. Terminal, help-style, unnamed, unloaded, and invalid buffers are ignored.
-5. `refresh_path()` checks matching buffers and leaves unrelated buffers untouched.
-6. Equivalent normalized and absolute paths match the same loaded buffer.
-7. `refresh_all()` continues if one candidate cannot be checked.
-8. Repeated setup creates only one set of autocmds.
-9. Disabling the feature removes previously registered autocmds.
-10. Invalid configuration reports a clear error.
+- [x] A loaded, unmodified buffer observes content changed on disk.
+- [x] A modified buffer retains its unsaved contents after the disk file changes.
+- [x] A later check refreshes that buffer after the local changes are intentionally discarded.
+- [x] Terminal buffers are ignored.
+- [x] Help-style and quickfix buffers are ignored.
+- [x] Unnamed and invalid buffers are ignored.
+- [x] Unloaded buffers are ignored.
+- [x] A file deleted externally is handled without aborting the refresh pass.
+- [x] `refresh_path()` checks a matching loaded buffer.
+- [x] `refresh_path()` leaves unrelated loaded buffers untouched.
+- [x] Equivalent normalized and absolute paths match the same loaded buffer.
+- [x] Symlinked and canonical forms of the same path match the same loaded buffer.
+- [x] `refresh_all()` continues if one candidate cannot be checked.
+- [x] Refresh operations preserve the active window and buffer.
+- [x] `BufEnter` refreshes its event buffer.
+- [x] `CursorHold` refreshes its event buffer.
+- [x] `FocusGained` refreshes all eligible loaded file buffers.
+- [x] Repeated setup creates only one set of autocmds.
+- [x] Disabling the feature removes previously registered autocmds.
+- [x] An empty event list installs no autocmds.
+- [x] Invalid configuration reports a clear error.
 
 Tests must preserve and restore global options and autocmd state that could affect other cases.
 
@@ -192,11 +202,14 @@ Tests must preserve and restore global options and autocmd state that could affe
 
 ### 6. Verification
 
-- Run the complete headless Neovim test suite.
-- Run the Lua formatter or formatting check when available.
-- Run `git diff --check`.
-- Manually verify a clean file refresh and an unsaved-buffer conflict in an interactive Neovim
-  session.
+- [x] **Automated:** Run the complete headless Neovim test suite.
+- [ ] **Automated/CI:** Run the suite on Neovim 0.10, the minimum supported version.
+- [ ] **Automated/tooling:** Run the Lua formatter or formatting check when available.
+- [x] **Automated/tooling:** Run `git diff --check`.
+- [ ] **Manual:** Verify that an external edit refreshes a clean buffer in interactive Neovim.
+- [ ] **Manual:** Verify that an external edit cannot overwrite an unsaved buffer in interactive
+  Neovim, and that a later check succeeds after the local change is deliberately discarded or
+  saved.
 
 ## Acceptance criteria
 

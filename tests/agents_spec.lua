@@ -127,6 +127,27 @@ assert_truthy(vim.wait(1000, function()
   )
 end), "normalized path did not refresh its loaded buffer")
 
+local unrelated_path = vim.fn.tempname()
+vim.fn.writefile({ "unrelated before" }, unrelated_path)
+local unrelated_buffer = vim.fn.bufadd(unrelated_path)
+vim.fn.bufload(unrelated_buffer)
+vim.bo[unrelated_buffer].autoread = false
+
+vim.fn.writefile({ "targeted change" }, refresh_path)
+vim.fn.writefile({ "unrelated external change" }, unrelated_path)
+assert_equal(1, refresh.refresh_path(refresh_path))
+assert_truthy(vim.wait(1000, function()
+  return vim.deep_equal(
+    { "targeted change" },
+    vim.api.nvim_buf_get_lines(refresh_buffer, 0, -1, false)
+  )
+end), "targeted buffer was not refreshed")
+assert_equal(
+  { "unrelated before" },
+  vim.api.nvim_buf_get_lines(unrelated_buffer, 0, -1, false)
+)
+vim.bo[unrelated_buffer].autoread = true
+
 local unnamed = vim.api.nvim_create_buf(true, false)
 assert_equal(false, refresh.refresh_buffer(unnamed))
 vim.bo[unnamed].buftype = "nofile"
@@ -134,9 +155,66 @@ assert_equal(false, refresh.refresh_buffer(unnamed))
 vim.api.nvim_buf_delete(unnamed, { force = true })
 assert_equal(false, refresh.refresh_buffer(unnamed))
 
-agents.setup({ refresh = { events = { "BufEnter", "FocusGained" } } })
+local help_buffer = vim.api.nvim_create_buf(true, false)
+vim.bo[help_buffer].buftype = "help"
+assert_equal(false, refresh.refresh_buffer(help_buffer))
+
+local quickfix_buffer = vim.api.nvim_create_buf(true, false)
+vim.bo[quickfix_buffer].buftype = "quickfix"
+assert_equal(false, refresh.refresh_buffer(quickfix_buffer))
+
+local terminal_buffer = vim.api.nvim_create_buf(false, true)
+vim.api.nvim_buf_call(terminal_buffer, function()
+  vim.fn.termopen({ vim.o.shell, vim.o.shellcmdflag, "exit 0" })
+end)
+assert_equal("terminal", vim.bo[terminal_buffer].buftype)
+assert_equal(false, refresh.refresh_buffer(terminal_buffer))
+
+local unloaded_path = vim.fn.tempname()
+vim.fn.writefile({ "unloaded" }, unloaded_path)
+local unloaded_buffer = vim.fn.bufadd(unloaded_path)
+assert_equal(false, vim.api.nvim_buf_is_loaded(unloaded_buffer))
+assert_equal(false, refresh.refresh_buffer(unloaded_buffer))
+
+local deleted_path = vim.fn.tempname()
+vim.fn.writefile({ "deleted file contents" }, deleted_path)
+local deleted_buffer = vim.fn.bufadd(deleted_path)
+vim.fn.bufload(deleted_buffer)
+vim.fn.delete(deleted_path)
+local deleted_ok = pcall(refresh.refresh_buffer, deleted_buffer)
+assert_equal(true, deleted_ok)
+assert_equal(
+  { "deleted file contents" },
+  vim.api.nvim_buf_get_lines(deleted_buffer, 0, -1, false)
+)
+
+vim.fn.writefile({ "refresh all change" }, unrelated_path)
+local original_refresh_buffer = refresh.refresh_buffer
+refresh.refresh_buffer = function(bufnr)
+  if bufnr == deleted_buffer then
+    return false
+  end
+  return original_refresh_buffer(bufnr)
+end
+local refresh_all_window = vim.api.nvim_get_current_win()
+local refresh_all_buffer = vim.api.nvim_get_current_buf()
+local refresh_all_ok = pcall(refresh.refresh_all)
+refresh.refresh_buffer = original_refresh_buffer
+assert_equal(true, refresh_all_ok)
+assert_equal(refresh_all_window, vim.api.nvim_get_current_win())
+assert_equal(refresh_all_buffer, vim.api.nvim_get_current_buf())
+assert_truthy(vim.wait(1000, function()
+  return vim.deep_equal(
+    { "refresh all change" },
+    vim.api.nvim_buf_get_lines(unrelated_buffer, 0, -1, false)
+  )
+end), "refresh_all did not continue after an uncheckable candidate")
+
+agents.setup({
+  refresh = { events = { "BufEnter", "FocusGained", "CursorHold" } },
+})
 local autocmd_count = #vim.api.nvim_get_autocmds({ group = "AgentsNvimRefresh" })
-assert_equal(2, autocmd_count)
+assert_equal(3, autocmd_count)
 
 vim.fn.writefile({ "autocmd refresh" }, refresh_path)
 vim.api.nvim_exec_autocmds("BufEnter", { buffer = refresh_buffer })
@@ -147,18 +225,70 @@ assert_truthy(vim.wait(1000, function()
   )
 end), "BufEnter did not refresh its event buffer")
 
-agents.setup({ refresh = { events = { "BufEnter", "FocusGained" } } })
+vim.fn.writefile({ "cursor hold refresh" }, refresh_path)
+vim.api.nvim_exec_autocmds("CursorHold", { buffer = refresh_buffer })
+assert_truthy(vim.wait(1000, function()
+  return vim.deep_equal(
+    { "cursor hold refresh" },
+    vim.api.nvim_buf_get_lines(refresh_buffer, 0, -1, false)
+  )
+end), "CursorHold did not refresh its event buffer")
+
+vim.fn.writefile({ "focus target" }, refresh_path)
+vim.fn.writefile({ "focus unrelated" }, unrelated_path)
+local refresh_all_calls = 0
+local real_refresh_all = refresh.refresh_all
+refresh.refresh_all = function()
+  refresh_all_calls = refresh_all_calls + 1
+  return real_refresh_all()
+end
+vim.api.nvim_exec_autocmds("FocusGained", {})
+assert_truthy(vim.wait(1000, function()
+  return refresh_all_calls == 1
+    and vim.deep_equal(
+      { "focus target" },
+      vim.api.nvim_buf_get_lines(refresh_buffer, 0, -1, false)
+    )
+    and vim.deep_equal(
+      { "focus unrelated" },
+      vim.api.nvim_buf_get_lines(unrelated_buffer, 0, -1, false)
+    )
+end), "FocusGained did not refresh all loaded file buffers")
+refresh.refresh_all = real_refresh_all
+
+agents.setup({
+  refresh = { events = { "BufEnter", "FocusGained", "CursorHold" } },
+})
 assert_equal(autocmd_count, #vim.api.nvim_get_autocmds({ group = "AgentsNvimRefresh" }))
 
-local valid, config_error = pcall(agents.setup, {
-  refresh = { events = { "BufWritePost" } },
-})
-assert_equal(false, valid)
-assert_truthy(config_error:find("refresh.events%[1%] must be one of"))
+agents.setup({ refresh = { events = {} } })
+assert_equal(0, #vim.api.nvim_get_autocmds({ group = "AgentsNvimRefresh" }))
+
+local function assert_config_error(options, pattern)
+  local valid, config_error = pcall(agents.setup, options)
+  assert_equal(false, valid)
+  assert_truthy(config_error:find(pattern))
+end
+
+assert_config_error({ refresh = false }, "refresh must be a table")
+assert_config_error({ refresh = { enabled = "yes" } }, "refresh.enabled must be a boolean")
+assert_config_error({ refresh = { events = "BufEnter" } }, "refresh.events must be a list")
+assert_config_error(
+  { refresh = { events = { "BufWritePost" } } },
+  "refresh.events%[1%] must be one of"
+)
 agents.setup({ refresh = { enabled = false } })
 
 vim.api.nvim_buf_delete(refresh_buffer, { force = true })
+vim.api.nvim_buf_delete(unrelated_buffer, { force = true })
+vim.api.nvim_buf_delete(help_buffer, { force = true })
+vim.api.nvim_buf_delete(quickfix_buffer, { force = true })
+vim.api.nvim_buf_delete(terminal_buffer, { force = true })
+vim.api.nvim_buf_delete(unloaded_buffer, { force = true })
+vim.api.nvim_buf_delete(deleted_buffer, { force = true })
 vim.fn.delete(refresh_path)
+vim.fn.delete(unrelated_path)
+vim.fn.delete(unloaded_path)
 
 local commands = require("agents.commands")
 assert_equal({ action = "open", provider = "codex" }, commands.parse({ "open", "codex" }))

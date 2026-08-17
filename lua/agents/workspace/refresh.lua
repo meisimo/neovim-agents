@@ -6,7 +6,21 @@ local function normalize_path(path)
   if type(path) ~= "string" or path == "" then
     return nil
   end
-  return vim.fs.normalize(vim.fn.fnamemodify(path, ":p"))
+
+  local absolute = vim.fs.normalize(vim.fn.fnamemodify(path, ":p"))
+  local resolved = vim.uv.fs_realpath(absolute)
+  if resolved then
+    return vim.fs.normalize(resolved)
+  end
+
+  -- The file may have been deleted externally. Resolve its existing parent so
+  -- paths crossing a symlink (for example /var and /private/var on macOS) still
+  -- match the canonical name stored by Neovim.
+  local parent = vim.uv.fs_realpath(vim.fs.dirname(absolute))
+  if parent then
+    return vim.fs.normalize(vim.fs.joinpath(parent, vim.fs.basename(absolute)))
+  end
+  return absolute
 end
 
 local function eligible(bufnr)
