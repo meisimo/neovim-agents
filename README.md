@@ -48,6 +48,7 @@ Defaults are shown below:
 require("agents").setup({
   default_provider = "claude",
   cwd = nil, -- nil uses Neovim's current working directory
+  close_on_exit = true, -- Hide the sidebar when its active CLI exits naturally
   window = {
     position = "right", -- right, left, top, or bottom
     size = 0.4,         -- fraction of the editor, or an absolute size
@@ -76,17 +77,27 @@ to disable that mapping. After using the escape mapping, press `i` to send input
 ## Commands
 
 ```vim
-:Agents open [provider]                    " Start a new conversation
-:Agents resume [provider] [session-id]      " Resume by ID or open the native picker
-:Agents continue [provider]                 " Continue the latest conversation in this directory
-:Agents toggle                " Show or hide the agent terminal
-:Agents stop                  " Stop the terminal job and delete its buffer
-:Agents health                " Check provider availability
+:Agents open [provider]                     " Start and select a new conversation
+:Agents resume [provider] [provider-id]      " Resume by provider ID or open its native picker
+:Agents continue [provider]                  " Continue the latest conversation in this directory
+:Agents toggle                               " Show or hide the agent sidebar
+:Agents next                                 " Select the next open chat
+:Agents prev                                 " Select the previous open chat
+:Agents select [session-id]                  " Select by plugin ID or open a picker
+:Agents stop [session-id]                    " Stop a chat and retain its transcript
+:Agents close [session-id]                   " Stop and remove a chat
+:Agents health                               " Check provider availability
 ```
 
+Starting or resuming a conversation creates a new plugin session without stopping existing ones.
+The sidebar winbar lists sessions as `<id>:<provider>`; click a label or use the switching commands
+to select one. An `x` marks a stopped or naturally exited chat. Closing the sidebar leaves all jobs
+running. When an active CLI exits naturally, the sidebar is hidden by default and its transcript
+remains selectable; set `close_on_exit = false` to keep it visible.
+
 The default provider is used when no provider is supplied. For backward compatibility,
-`:Agents resume <session-id>` treats an unrecognized second argument as a session ID for the
-default provider. Examples:
+`:Agents resume <provider-session-id>` treats an unrecognized second argument as a provider
+conversation ID for the default provider. Examples:
 
 ```vim
 :Agents open codex
@@ -106,7 +117,12 @@ local agents = require("agents")
 
 vim.keymap.set("n", "<leader>aa", agents.toggle, { desc = "Toggle coding agent" })
 vim.keymap.set("n", "<leader>ac", agents.continue, { desc = "Continue coding-agent chat" })
+vim.keymap.set("n", "]a", agents.next, { desc = "Next coding-agent chat" })
+vim.keymap.set("n", "[a", agents.previous, { desc = "Previous coding-agent chat" })
 ```
+
+`agents.select(id)`, `agents.stop(id)`, and `agents.close(id)` accept a plugin session ID. Omitting
+the ID uses the active session, except `agents.select()`, which opens the session picker.
 
 ## Provider contract
 
@@ -119,3 +135,6 @@ Providers are created with `require("agents.providers.adapter").new()` and expos
 The command and terminal layers contain no provider-specific flags. New adapters can be added to
 the built-in registry or registered at runtime with
 `require("agents.providers").register(name, provider)`.
+
+See [doc/architecture.md](doc/architecture.md) for the design behind sessions, native terminal
+backends, structured backends, and planned workspace integration.

@@ -3,6 +3,7 @@ local M = {}
 M.defaults = {
   default_provider = "claude",
   cwd = nil,
+  close_on_exit = true,
   window = {
     position = "right",
     size = 0.4,

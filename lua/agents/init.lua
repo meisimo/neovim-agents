@@ -25,8 +25,24 @@ function M.toggle()
   require("agents.commands").execute({ "toggle" })
 end
 
-function M.stop()
-  require("agents.commands").execute({ "stop" })
+function M.stop(session_id)
+  require("agents.commands").execute({ "stop", session_id })
+end
+
+function M.close(session_id)
+  require("agents.commands").execute({ "close", session_id })
+end
+
+function M.next()
+  require("agents.commands").execute({ "next" })
+end
+
+function M.previous()
+  require("agents.commands").execute({ "prev" })
+end
+
+function M.select(session_id)
+  require("agents.commands").execute({ "select", session_id })
 end
 
 return M
