@@ -1,0 +1,221 @@
+# Automatic Buffer Refresh Implementation Plan
+
+## Status
+
+Planned on branch `feat/automatic-buffer-refresh`.
+
+## Objective
+
+Keep loaded file buffers synchronized with changes made outside Neovim, including changes made by
+agent processes, without coupling the feature to a provider or terminal session.
+
+The first version will use Neovim's external-change detection. It will not watch the filesystem,
+parse agent output, or attempt to attribute changes to a particular agent.
+
+## User experience
+
+When Neovim regains focus or the user returns to a file buffer, the plugin checks whether the file
+changed on disk. A clean buffer is refreshed through Neovim's normal external-change handling. A
+buffer containing unsaved changes is never force-reloaded or overwritten.
+
+Refresh behavior is enabled by default and can be disabled or assigned a different set of events:
+
+```lua
+require("agents").setup({
+  refresh = {
+    enabled = true,
+    events = { "BufEnter", "FocusGained", "CursorHold" },
+  },
+})
+```
+
+The initial release will not add a user command. The refresh service will expose Lua functions so
+later workspace features can request targeted checks.
+
+## Scope
+
+### Included
+
+- Detect external changes using Neovim's built-in check mechanism.
+- Check the current file buffer on buffer-local events.
+- Check loaded file buffers when Neovim regains focus.
+- Preserve buffers with unsaved local changes.
+- Ignore terminal, help, prompt, quickfix, unnamed, unloaded, and invalid buffers.
+- Provide a path-targeted refresh API for the future modified-files tracker.
+- Make setup idempotent so configuration reloads do not duplicate autocmds.
+- Add automated tests and user documentation.
+
+### Excluded
+
+- Filesystem watchers.
+- Polling timers.
+- Per-turn change detection.
+- Determining whether an agent caused a change.
+- Resolving conflicts between disk changes and unsaved buffer changes.
+- Refreshing files that are not loaded in Neovim.
+- Notifications beyond Neovim's standard external-change behavior.
+
+## Design
+
+### Module ownership
+
+Add `lua/agents/workspace/refresh.lua`. This module owns refresh policy and autocmd registration; it
+must not depend on providers, sessions, terminal jobs, or the sidebar.
+
+The initial public module interface will be:
+
+```lua
+refresh.setup(options)
+refresh.refresh_buffer(bufnr)
+refresh.refresh_path(path)
+refresh.refresh_all()
+```
+
+`refresh.setup()` recreates a named augroup and installs the configured events. Recreating the
+augroup keeps repeated calls to `require("agents").setup()` idempotent.
+
+### Buffer eligibility
+
+A buffer can be checked only when all of the following are true:
+
+- The buffer handle is valid.
+- The buffer is loaded.
+- `buftype` is empty.
+- The buffer has a non-empty filename.
+- The filename identifies a regular file or a file that previously existed and may have been
+  removed externally.
+
+The refresh service must not change the active window or replace its buffer.
+
+### Refresh behavior
+
+Refresh operations will delegate change detection to Neovim rather than comparing timestamps or
+reading files directly.
+
+- `refresh_buffer(bufnr)` checks one eligible buffer.
+- `refresh_path(path)` normalizes the path, finds matching loaded buffers, and checks only those
+  buffers.
+- `refresh_all()` checks all eligible loaded buffers.
+
+The implementation must never use `:edit!`, directly replace buffer lines, clear the `modified`
+flag, or otherwise force disk content over unsaved changes. Neovim remains responsible for
+external-change and conflict behavior.
+
+Autocmd behavior:
+
+- `BufEnter` and `CursorHold` check the event buffer.
+- `FocusGained` checks all eligible loaded file buffers because several files may have changed
+  while Neovim was unfocused.
+
+Callbacks should schedule or guard refresh work if an event context makes an immediate check
+unsafe. Expected external-change warnings must not be written to the plugin error log as internal
+failures.
+
+### Configuration
+
+Add the following defaults to `lua/agents/config.lua`:
+
+```lua
+refresh = {
+  enabled = true,
+  events = { "BufEnter", "FocusGained", "CursorHold" },
+}
+```
+
+Configuration requirements:
+
+- `enabled` must be a boolean.
+- `events` must be a list of supported event names.
+- An empty event list is valid and installs no autocmds.
+- Calling setup with `enabled = false` removes previously installed refresh autocmds.
+- Invalid values produce an actionable `agents.nvim` error.
+
+The supported event list should initially remain limited to events whose callback behavior is
+covered by tests. Users should not be able to inject arbitrary autocmd event names through this
+option.
+
+### Plugin setup integration
+
+After configuration is resolved, `lua/agents/init.lua` passes `config.options.refresh` to the
+refresh service. Refresh registration remains independent from command and sidebar registration.
+
+No session must be running for automatic refresh to work. This is intentional: buffer refresh is a
+workspace feature, not an agent lifecycle feature.
+
+## Implementation steps
+
+### 1. Configuration
+
+- Add refresh defaults.
+- Validate the refresh configuration and supported events.
+- Preserve existing deep-merge setup behavior.
+
+### 2. Workspace refresh service
+
+- Add buffer eligibility checks.
+- Implement single-buffer, path-targeted, and all-buffer refresh functions.
+- Normalize paths consistently with Neovim buffer names.
+- Prevent one invalid or deleted buffer from aborting an entire refresh pass.
+
+### 3. Autocmd lifecycle
+
+- Create a named `agents.nvim` refresh augroup.
+- Clear and recreate its autocmds during setup.
+- Route buffer-local and global events to the appropriate refresh function.
+- Remove the autocmds when refresh is disabled.
+
+### 4. Automated tests
+
+Use temporary files and real Neovim buffers in the headless test suite. Cover:
+
+1. A loaded, unmodified buffer observes content changed on disk.
+2. A modified buffer retains its unsaved contents after the disk file changes.
+3. A later check can refresh that buffer after the local changes are intentionally discarded or
+   saved.
+4. Terminal, help-style, unnamed, unloaded, and invalid buffers are ignored.
+5. `refresh_path()` checks matching buffers and leaves unrelated buffers untouched.
+6. Equivalent normalized and absolute paths match the same loaded buffer.
+7. `refresh_all()` continues if one candidate cannot be checked.
+8. Repeated setup creates only one set of autocmds.
+9. Disabling the feature removes previously registered autocmds.
+10. Invalid configuration reports a clear error.
+
+Tests must preserve and restore global options and autocmd state that could affect other cases.
+
+### 5. Documentation
+
+- Add refresh defaults and behavior to `README.md`.
+- Add the option and safety guarantee to `doc/agents.txt`.
+- Mark automatic buffer refresh as implemented in `doc/features-summary.md`.
+- Update the implementation status and module layout in `doc/architecture.md`.
+- State that the first version is event-driven and does not use filesystem watchers.
+
+### 6. Verification
+
+- Run the complete headless Neovim test suite.
+- Run the Lua formatter or formatting check when available.
+- Run `git diff --check`.
+- Manually verify a clean file refresh and an unsaved-buffer conflict in an interactive Neovim
+  session.
+
+## Acceptance criteria
+
+The feature is complete when:
+
+- External changes become visible in eligible clean buffers on a configured event.
+- Unsaved buffer contents cannot be silently overwritten by the refresh service.
+- The service works without an active agent session.
+- Targeted refresh by path is available for later workspace features.
+- Setup and disable operations are idempotent.
+- Terminal and other non-file buffers are unaffected.
+- Automated tests cover the safety and lifecycle cases above.
+- README, help, architecture, and feature-summary documentation agree with the implementation.
+
+## Follow-up work
+
+The modified-files utility can call `refresh_path(path)` whenever its change tracker discovers a
+specific path. A later filesystem-watcher implementation may call the same function for lower
+latency without changing refresh policy or provider integrations.
+
+The next Phase 3 feature after refresh should be file-range context references, followed by
+session-baseline change tracking and navigation.

@@ -355,9 +355,10 @@ The core model must not depend on provider-specific `@file` or mention syntax.
 
 Buffer refresh is a workspace concern and does not depend on agent output.
 
-The initial implementation should run Neovim's external-change check for loaded file buffers on
-events such as `BufEnter`, `FocusGained`, and `CursorHold`. A later implementation may add
-filesystem watchers for lower latency.
+The initial implementation runs Neovim's external-change check for loaded file buffers on
+`BufEnter`, `FocusGained`, and `CursorHold`. It is implemented in `workspace/refresh.lua` and is
+configured independently from providers and sessions. A later implementation may add filesystem
+watchers for lower latency.
 
 When a change tracker reports a specific path, the refresh service can check its corresponding
 loaded buffer immediately. It must never silently overwrite a buffer with unsaved local changes;
@@ -476,7 +477,7 @@ The native-terminal portions of phases 1 and 2 are implemented. Later phases rem
 ### Phase 3: Provider-independent workspace features
 
 - Add file-range context references.
-- Add safe automatic buffer refresh.
+- Add safe automatic buffer refresh. (In progress: service and event integration implemented.)
 - Add session-baseline change tracking and navigation.
 
 ### Phase 4: Capabilities and structured events

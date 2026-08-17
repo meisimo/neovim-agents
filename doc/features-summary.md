@@ -33,7 +33,11 @@ The purpose of this document is to serve as a guideline for design and architect
 ### Neovim files automatic refresh
 
 - Description: If a chat modifies a file that is open in a tab the user will see the changes on the fly without having to reopen the file.
-- **Status**: Pending to be designed
+- **Status**: In progress; the provider-independent refresh service and event integration are
+  implemented
+- Loaded file buffers are checked on `BufEnter`, `FocusGained`, and `CursorHold` by default.
+- Buffers with unsaved changes and non-file buffers are skipped. The first version is event-driven
+  and does not use filesystem watchers.
 
 ### Copy from file to the chat
 

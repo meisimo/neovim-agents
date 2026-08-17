@@ -20,6 +20,10 @@ SETUP                                                               *agents-setu
       toggle = "<C-f><C-f>",
       escape = "<C-f>f",
     },
+    refresh = {
+      enabled = true,
+      events = { "BufEnter", "FocusGained", "CursorHold" },
+    },
     providers = {
       claude = { command = "claude", args = {} },
       codex = { command = "codex", args = {} },
@@ -37,6 +41,14 @@ share one sidebar and remain running when hidden. The sidebar winbar displays
 clickable session labels in the form {id}:{provider}; an x marks a stopped or
 exited session. When close_on_exit is true, a natural exit from the active CLI
 hides the sidebar but retains the terminal transcript.
+
+Buffer refresh uses Neovim's external-change check on the configured events.
+FocusGained checks all loaded file buffers; BufEnter and CursorHold check the
+event buffer. Modified, unnamed, unloaded, and non-file buffers are skipped, so
+unsaved contents are not replaced. Set refresh.enabled to false or use an empty
+events list to install no refresh autocommands. Supported events are BufEnter,
+FocusGained, and CursorHold. This implementation is event-driven and does not
+install a filesystem watcher.
 
 ==============================================================================
 COMMANDS                                                         *agents-commands*

@@ -70,6 +70,10 @@ assert_equal(2, vim.fn.exists(":Agents"))
 assert_equal("<C-f><C-f>", require("agents.config").options.mappings.toggle)
 assert_equal("<C-f>f", require("agents.config").options.mappings.escape)
 assert_equal(true, require("agents.config").options.close_on_exit)
+assert_equal(
+  { enabled = true, events = { "BufEnter", "FocusGained", "CursorHold" } },
+  require("agents.config").options.refresh
+)
 assert_equal("Toggle agent terminal", vim.fn.maparg("<C-f><C-f>", "n", false, true).desc)
 agents.setup({ window = { position = "bottom" } })
 assert_equal("bottom", require("agents.config").options.window.position)
@@ -81,6 +85,80 @@ assert_equal("function", type(agents.next))
 assert_equal("function", type(agents.previous))
 assert_equal("function", type(agents.select))
 assert_equal("function", type(agents.close))
+
+local refresh = require("agents.workspace.refresh")
+agents.setup({ refresh = { enabled = false } })
+assert_equal(0, #vim.api.nvim_get_autocmds({ group = "AgentsNvimRefresh" }))
+
+local refresh_path = vim.fn.tempname()
+vim.fn.writefile({ "before" }, refresh_path)
+local refresh_buffer = vim.fn.bufadd(refresh_path)
+vim.fn.bufload(refresh_buffer)
+assert_equal({ "before" }, vim.api.nvim_buf_get_lines(refresh_buffer, 0, -1, false))
+
+vim.fn.writefile({ "after", "external" }, refresh_path)
+local active_window = vim.api.nvim_get_current_win()
+local active_buffer = vim.api.nvim_get_current_buf()
+assert_equal(true, refresh.refresh_buffer(refresh_buffer))
+assert_equal(active_window, vim.api.nvim_get_current_win())
+assert_equal(active_buffer, vim.api.nvim_get_current_buf())
+assert_truthy(vim.wait(1000, function()
+  return vim.deep_equal(
+    { "after", "external" },
+    vim.api.nvim_buf_get_lines(refresh_buffer, 0, -1, false)
+  )
+end), "clean buffer did not observe the external change")
+
+vim.api.nvim_buf_set_lines(refresh_buffer, 0, -1, false, { "unsaved" })
+vim.fn.writefile({ "second external change" }, refresh_path)
+assert_equal(false, refresh.refresh_buffer(refresh_buffer))
+assert_equal({ "unsaved" }, vim.api.nvim_buf_get_lines(refresh_buffer, 0, -1, false))
+assert_equal(true, vim.bo[refresh_buffer].modified)
+
+vim.bo[refresh_buffer].modified = false
+local normalized_refresh_path = vim.fn.fnamemodify(refresh_path, ":h")
+  .. "/./"
+  .. vim.fn.fnamemodify(refresh_path, ":t")
+assert_equal(true, refresh.refresh_path(normalized_refresh_path) > 0)
+assert_truthy(vim.wait(1000, function()
+  return vim.deep_equal(
+    { "second external change" },
+    vim.api.nvim_buf_get_lines(refresh_buffer, 0, -1, false)
+  )
+end), "normalized path did not refresh its loaded buffer")
+
+local unnamed = vim.api.nvim_create_buf(true, false)
+assert_equal(false, refresh.refresh_buffer(unnamed))
+vim.bo[unnamed].buftype = "nofile"
+assert_equal(false, refresh.refresh_buffer(unnamed))
+vim.api.nvim_buf_delete(unnamed, { force = true })
+assert_equal(false, refresh.refresh_buffer(unnamed))
+
+agents.setup({ refresh = { events = { "BufEnter", "FocusGained" } } })
+local autocmd_count = #vim.api.nvim_get_autocmds({ group = "AgentsNvimRefresh" })
+assert_equal(2, autocmd_count)
+
+vim.fn.writefile({ "autocmd refresh" }, refresh_path)
+vim.api.nvim_exec_autocmds("BufEnter", { buffer = refresh_buffer })
+assert_truthy(vim.wait(1000, function()
+  return vim.deep_equal(
+    { "autocmd refresh" },
+    vim.api.nvim_buf_get_lines(refresh_buffer, 0, -1, false)
+  )
+end), "BufEnter did not refresh its event buffer")
+
+agents.setup({ refresh = { events = { "BufEnter", "FocusGained" } } })
+assert_equal(autocmd_count, #vim.api.nvim_get_autocmds({ group = "AgentsNvimRefresh" }))
+
+local valid, config_error = pcall(agents.setup, {
+  refresh = { events = { "BufWritePost" } },
+})
+assert_equal(false, valid)
+assert_truthy(config_error:find("refresh.events%[1%] must be one of"))
+agents.setup({ refresh = { enabled = false } })
+
+vim.api.nvim_buf_delete(refresh_buffer, { force = true })
+vim.fn.delete(refresh_path)
 
 local commands = require("agents.commands")
 assert_equal({ action = "open", provider = "codex" }, commands.parse({ "open", "codex" }))

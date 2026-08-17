@@ -57,6 +57,10 @@ require("agents").setup({
     toggle = "<C-f><C-f>", -- Show or hide the terminal, preserving its session
     escape = "<C-f>f",     -- Enter Neovim's Terminal-Normal mode
   },
+  refresh = {
+    enabled = true,
+    events = { "BufEnter", "FocusGained", "CursorHold" },
+  },
   providers = {
     claude = {
       command = "claude",
@@ -73,6 +77,11 @@ require("agents").setup({
 The toggle mapping works in normal buffers and in the agent terminal, but does not affect other
 terminal windows. The escape mapping is local to the agent terminal. Set either value to `false`
 to disable that mapping. After using the escape mapping, press `i` to send input to the agent again.
+
+Buffer refresh asks Neovim to check loaded file buffers for external changes on the configured
+events. `FocusGained` checks every loaded file buffer; the other supported events check only their
+event buffer. Modified buffers and non-file buffers are skipped, so unsaved contents are never
+replaced. This first version is event-driven and does not install a filesystem watcher.
 
 ## Commands
 

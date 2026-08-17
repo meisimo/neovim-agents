@@ -1,8 +1,9 @@
 local M = {}
 
 function M.setup(options)
-  require("agents.config").setup(options)
+  local config = require("agents.config").setup(options)
   require("agents.commands").register()
+  require("agents.workspace.refresh").setup(config.refresh)
 end
 
 function M.open(provider)
