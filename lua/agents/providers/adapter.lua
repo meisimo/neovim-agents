@@ -7,13 +7,16 @@ local function assert_type(value, expected, label)
 end
 
 ---Create a provider from action-to-arguments builders.
----@param spec { name: string, command: string, actions: table<string, function> }
+---@param spec { name: string, command: string, context_prefix?: string, actions: table<string, function> }
 ---@return table
 function M.new(spec)
   assert_type(spec, "table", "specification")
   assert_type(spec.name, "string", "name")
   assert_type(spec.command, "string", "command")
   assert_type(spec.actions, "table", "actions")
+  if spec.context_prefix ~= nil then
+    assert_type(spec.context_prefix, "string", "context prefix")
+  end
   for action, builder in pairs(spec.actions) do
     assert_type(action, "string", "action name")
     assert_type(builder, "function", ("action %q"):format(action))
@@ -22,6 +25,7 @@ function M.new(spec)
   local provider = {
     name = spec.name,
     default_command = spec.command,
+    context_prefix = spec.context_prefix or "",
   }
 
   function provider.supports(action)

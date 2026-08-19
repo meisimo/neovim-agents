@@ -124,6 +124,17 @@ function Backend:is_running()
   return self.job ~= nil
 end
 
+function Backend:send(text)
+  if type(text) ~= "string" or text == "" then
+    error("agents.nvim: terminal backend can only send non-empty text")
+  end
+  if not self.job then
+    error("agents.nvim: terminal backend is not running")
+  end
+  vim.api.nvim_chan_send(self.job, text)
+  return true
+end
+
 function Backend:stop()
   if not self.job then
     return false

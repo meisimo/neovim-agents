@@ -12,7 +12,8 @@ CLI.
 ## Status
 
 This project is in early development. It supports starting, resuming, continuing, toggling, and
-stopping native Claude Code and Codex CLI terminal sessions.
+stopping native Claude Code and Codex CLI terminal sessions, along with safe automatic refresh of
+loaded file buffers changed outside Neovim and file-range references pasted into the active chat.
 
 ## Requirements
 
@@ -56,6 +57,7 @@ require("agents").setup({
   mappings = {
     toggle = "<C-f><C-f>", -- Show or hide the terminal, preserving its session
     escape = "<C-f>f",     -- Enter Neovim's Terminal-Normal mode
+    context = "<C-f>p",    -- Paste the Visual selection's file reference
   },
   refresh = {
     enabled = true,
@@ -75,8 +77,9 @@ require("agents").setup({
 ```
 
 The toggle mapping works in normal buffers and in the agent terminal, but does not affect other
-terminal windows. The escape mapping is local to the agent terminal. Set either value to `false`
-to disable that mapping. After using the escape mapping, press `i` to send input to the agent again.
+terminal windows. The escape mapping is local to the agent terminal, and the context mapping works
+in Visual mode. Set any value to `false` to disable that mapping. After using the escape mapping,
+press `i` to send input to the agent again.
 
 Buffer refresh asks Neovim to check loaded file buffers for external changes on the configured
 events. `FocusGained` checks every loaded file buffer; the other supported events check only their
@@ -93,6 +96,7 @@ replaced. This first version is event-driven and does not install a filesystem w
 :Agents next                                 " Select the next open chat
 :Agents prev                                 " Select the previous open chat
 :Agents select [session-id]                  " Select by plugin ID or open a picker
+:Agents context                              " Paste the current Visual selection as a file reference
 :Agents stop [session-id]                    " Stop a chat and retain its transcript
 :Agents close [session-id]                   " Stop and remove a chat
 :Agents health                               " Check provider availability
@@ -119,6 +123,12 @@ conversation ID for the default provider. Examples:
 For Codex, `continue` uses `codex resume --last`, scoped by Codex to Neovim's current working
 directory. Run `:help agents.nvim` for the same reference inside Neovim.
 
+From a characterwise or linewise Visual selection, press `<C-f>p` or run `:Agents context` to paste
+a reference such as `@src/module-a/init.py:6:23-14:78` into Claude Code or
+`src/module-a/init.py:6:23-14:78` into Codex. The reference is not submitted, and the sidebar is
+focused so the prompt can be completed. The file must be saved, and blockwise selections are not
+supported. Paths inside the session working directory are relative; other paths are absolute.
+
 The same operations are available to mappings and other Lua code:
 
 ```lua
@@ -126,6 +136,7 @@ local agents = require("agents")
 
 vim.keymap.set("n", "<leader>aa", agents.toggle, { desc = "Toggle coding agent" })
 vim.keymap.set("n", "<leader>ac", agents.continue, { desc = "Continue coding-agent chat" })
+vim.keymap.set("x", "<leader>ax", agents.context, { desc = "Add file range to agent chat" })
 vim.keymap.set("n", "]a", agents.next, { desc = "Next coding-agent chat" })
 vim.keymap.set("n", "[a", agents.previous, { desc = "Previous coding-agent chat" })
 ```
@@ -140,6 +151,9 @@ Providers are created with `require("agents.providers.adapter").new()` and expos
 - `is_available(config)` to check its executable
 - `supports(action)` to advertise supported actions
 - `build_command(action, options, config)` to produce an argument vector
+
+Adapters may also set `context_prefix` when their CLI has stable file-mention syntax. Claude uses
+`@`; the default and Codex use no prefix.
 
 The command and terminal layers contain no provider-specific flags. New adapters can be added to
 the built-in registry or registered at runtime with

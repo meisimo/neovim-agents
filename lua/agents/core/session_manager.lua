@@ -2,6 +2,7 @@ local config = require("agents.config")
 local providers = require("agents.providers")
 local terminal = require("agents.backends.terminal")
 local sidebar_module = require("agents.ui.sidebar")
+local context = require("agents.context")
 
 local M = {}
 
@@ -171,6 +172,7 @@ function Manager:start(action, provider_name, action_options)
     provider = provider_name,
     cwd = self.config.options.cwd or vim.fn.getcwd(),
     action = action,
+    context_prefix = provider.context_prefix or "",
     status = "starting",
     exit_code = nil,
   }
@@ -273,6 +275,25 @@ function Manager:pick()
       self:select(session.id)
     end
   end)
+end
+
+function Manager:add_context(selection)
+  local session = self:_session()
+  if
+    session.status ~= "running"
+    or type(session.backend.is_running) ~= "function"
+    or not session.backend:is_running()
+  then
+    error("agents.nvim: active session is not running")
+  end
+  if type(session.backend.send) ~= "function" then
+    error("agents.nvim: active session backend cannot accept context")
+  end
+
+  local text = context.render(selection, session.cwd, session.context_prefix)
+  session.backend:send(text)
+  self:_show_active()
+  return text
 end
 
 function Manager:stop(id)

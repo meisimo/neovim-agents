@@ -35,8 +35,10 @@ assert_equal(
 )
 assert_equal(true, claude.supports("resume"))
 assert_equal(false, claude.supports("fork"))
+assert_equal("@", claude.context_prefix)
 
 assert_equal({ "codex" }, codex.build_command("open", {}, { command = "codex" }))
+assert_equal("", codex.context_prefix)
 assert_equal({ "codex", "resume" }, codex.build_command("resume", {}, { command = "codex" }))
 assert_equal(
   { "codex", "resume", "session-456" },
@@ -69,12 +71,14 @@ agents.setup()
 assert_equal(2, vim.fn.exists(":Agents"))
 assert_equal("<C-f><C-f>", require("agents.config").options.mappings.toggle)
 assert_equal("<C-f>f", require("agents.config").options.mappings.escape)
+assert_equal("<C-f>p", require("agents.config").options.mappings.context)
 assert_equal(true, require("agents.config").options.close_on_exit)
 assert_equal(
   { enabled = true, events = { "BufEnter", "FocusGained", "CursorHold" } },
   require("agents.config").options.refresh
 )
 assert_equal("Toggle agent terminal", vim.fn.maparg("<C-f><C-f>", "n", false, true).desc)
+assert_equal("Add file range to agent chat", vim.fn.maparg("<C-f>p", "x", false, true).desc)
 agents.setup({ window = { position = "bottom" } })
 assert_equal("bottom", require("agents.config").options.window.position)
 assert_equal(2, vim.fn.exists(":Agents"))
@@ -85,6 +89,11 @@ assert_equal("function", type(agents.next))
 assert_equal("function", type(agents.previous))
 assert_equal("function", type(agents.select))
 assert_equal("function", type(agents.close))
+assert_equal("function", type(agents.context))
+agents.setup({ mappings = { context = false } })
+assert_equal("", vim.fn.maparg("<C-f>p", "x"))
+agents.setup({ window = { position = "bottom" } })
+assert_equal("Add file range to agent chat", vim.fn.maparg("<C-f>p", "x", false, true).desc)
 
 local refresh = require("agents.workspace.refresh")
 agents.setup({ refresh = { enabled = false } })
@@ -290,6 +299,133 @@ vim.fn.delete(refresh_path)
 vim.fn.delete(unrelated_path)
 vim.fn.delete(unloaded_path)
 
+local context = require("agents.context")
+local context_root = vim.fn.tempname()
+vim.fn.mkdir(context_root, "p")
+local context_path = vim.fs.joinpath(context_root, "file with spaces.lua")
+vim.fn.writefile({ "abcdef", "ghijkl", "mnopqr", "aéz" }, context_path)
+local context_buffer = vim.fn.bufadd(context_path)
+vim.fn.bufload(context_buffer)
+
+assert_equal(
+  "file with spaces.lua:1-3",
+  context.render({
+    bufnr = context_buffer,
+    mode = "V",
+    first = { line = 3, col = 7 },
+    last = { line = 1, col = 1 },
+  }, context_root)
+)
+local original_relpath = vim.fs.relpath
+vim.fs.relpath = nil
+local fallback_relative_reference = context.render({
+  bufnr = context_buffer,
+  mode = "V",
+  first = { line = 1, col = 1 },
+  last = { line = 1, col = 1 },
+}, context_root)
+vim.fs.relpath = original_relpath
+assert_equal("file with spaces.lua:1", fallback_relative_reference)
+assert_equal(
+  "file with spaces.lua:1:2-2:4",
+  context.render({
+    bufnr = context_buffer,
+    mode = "v",
+    first = { line = 2, col = 4 },
+    last = { line = 1, col = 2 },
+  }, context_root)
+)
+assert_equal(
+  "@file with spaces.lua:1:2-2:4",
+  context.render({
+    bufnr = context_buffer,
+    mode = "v",
+    first = { line = 1, col = 2 },
+    last = { line = 2, col = 4 },
+  }, context_root, "@")
+)
+assert_truthy(
+  context.render({
+    bufnr = context_buffer,
+    mode = "V",
+    first = { line = 2, col = 1 },
+    last = { line = 2, col = 1 },
+  }, vim.fn.tempname()):find(vim.pesc(context_path), 1, false)
+)
+
+local block_ok, block_error = pcall(function()
+  context.render({
+    bufnr = context_buffer,
+    mode = "\22",
+    first = { line = 1, col = 1 },
+    last = { line = 2, col = 2 },
+  }, context_root)
+end)
+assert_equal(false, block_ok)
+assert_truthy(block_error:find("blockwise selections are not supported"))
+
+vim.api.nvim_buf_set_lines(context_buffer, 0, 1, false, { "unsaved" })
+local modified_context_ok, modified_context_error = pcall(function()
+  context.render({
+    bufnr = context_buffer,
+    mode = "V",
+    first = { line = 1, col = 1 },
+    last = { line = 1, col = 1 },
+  }, context_root)
+end)
+assert_equal(false, modified_context_ok)
+assert_truthy(modified_context_error:find("save the file"))
+vim.api.nvim_buf_set_lines(context_buffer, 0, 1, false, { "abcdef" })
+vim.bo[context_buffer].modified = false
+
+local unnamed_context_buffer = vim.api.nvim_create_buf(true, false)
+local unnamed_context_ok, unnamed_context_error = pcall(function()
+  context.render({
+    bufnr = unnamed_context_buffer,
+    mode = "V",
+    first = { line = 1, col = 1 },
+    last = { line = 1, col = 1 },
+  }, context_root)
+end)
+assert_equal(false, unnamed_context_ok)
+assert_truthy(unnamed_context_error:find("named file buffer"))
+vim.api.nvim_buf_delete(unnamed_context_buffer, { force = true })
+
+local special_context_buffer = vim.api.nvim_create_buf(false, true)
+local special_context_ok, special_context_error = pcall(function()
+  context.render({
+    bufnr = special_context_buffer,
+    mode = "V",
+    first = { line = 1, col = 1 },
+    last = { line = 1, col = 1 },
+  }, context_root)
+end)
+assert_equal(false, special_context_ok)
+assert_truthy(special_context_error:find("loaded file buffer"))
+vim.api.nvim_buf_delete(special_context_buffer, { force = true })
+
+local context_window_buffer = vim.api.nvim_get_current_buf()
+vim.api.nvim_win_set_buf(0, context_buffer)
+vim.api.nvim_win_set_cursor(0, { 1, 1 })
+vim.cmd("normal! v2l")
+local captured_visual = context.capture_visual(context_buffer)
+assert_equal("v", captured_visual.mode)
+assert_equal({ line = 1, col = 2 }, captured_visual.first)
+assert_equal({ line = 1, col = 4 }, captured_visual.last)
+vim.cmd("normal! \27")
+local captured_command = context.capture_command(context_buffer, 1, 1, 1)
+assert_equal("v", captured_command.mode)
+assert_equal({ line = 1, col = 2 }, captured_command.first)
+assert_equal({ line = 1, col = 4 }, captured_command.last)
+
+vim.api.nvim_win_set_cursor(0, { 4, 1 })
+vim.cmd("normal! vl")
+local multibyte_visual = context.capture_visual(context_buffer)
+assert_equal({ line = 4, col = 2 }, multibyte_visual.first)
+assert_equal({ line = 4, col = 4 }, multibyte_visual.last)
+vim.cmd("normal! \27")
+vim.api.nvim_win_set_buf(0, context_window_buffer)
+
 local commands = require("agents.commands")
 assert_equal({ action = "open", provider = "codex" }, commands.parse({ "open", "codex" }))
 assert_equal(
@@ -304,6 +440,7 @@ assert_equal({ action = "continue", provider = "codex" }, commands.parse({ "cont
 assert_equal({ action = "stop", session_id = "4" }, commands.parse({ "stop", "4" }))
 assert_equal({ action = "close", session_id = "3" }, commands.parse({ "close", "3" }))
 assert_equal({ action = "select", session_id = "2" }, commands.parse({ "select", "2" }))
+assert_equal({ action = "context" }, commands.parse({ "context" }))
 
 local session_manager = require("agents.core.session_manager")
 
@@ -338,6 +475,7 @@ local function fake_manager()
 
   local fake_provider = {
     default_command = "fake-agent",
+    context_prefix = "@",
     supports = function()
       return true
     end,
@@ -388,6 +526,14 @@ local function fake_manager()
         options.on_exit(self, 143)
       end
 
+      function backend:is_running()
+        return self.running
+      end
+
+      function backend:send(text)
+        self.sent = text
+      end
+
       function backend:destroy()
         self.running = false
         self.destroyed = true
@@ -412,6 +558,16 @@ local function fake_manager()
 end
 
 local manager, fake_sidebar, fake_backends, fake_config, fake_controls = fake_manager()
+local no_session_context_ok, no_session_context_error = pcall(function()
+  manager:add_context({
+    bufnr = context_buffer,
+    mode = "V",
+    first = { line = 1, col = 1 },
+    last = { line = 1, col = 1 },
+  })
+end)
+assert_equal(false, no_session_context_ok)
+assert_truthy(no_session_context_error:find("no active session"))
 local first = manager:start("open", "test")
 local second = manager:start("open", "test")
 assert_equal(1, first.id)
@@ -424,8 +580,29 @@ assert_equal(1, manager:select_previous().id)
 assert_equal(2, manager:select_next().id)
 assert_equal(1, manager:select(1).id)
 
+local sent_context = manager:add_context({
+  bufnr = context_buffer,
+  mode = "v",
+  first = { line = 1, col = 2 },
+  last = { line = 1, col = 4 },
+})
+local resolved_context_path = vim.uv.fs_realpath(context_path) or context_path
+assert_equal(("@%s:1:2-1:4"):format(resolved_context_path), sent_context)
+assert_equal(sent_context, fake_backends[1].sent)
+assert_equal(1, fake_sidebar.displayed)
+
 manager:stop(1)
 assert_equal("stopped", first.status)
+local stopped_context_ok, stopped_context_error = pcall(function()
+  manager:add_context({
+    bufnr = context_buffer,
+    mode = "V",
+    first = { line = 1, col = 1 },
+    last = { line = 1, col = 1 },
+  })
+end)
+assert_equal(false, stopped_context_ok)
+assert_truthy(stopped_context_error:find("active session is not running"))
 assert_equal(true, fake_sidebar.visible)
 assert_equal(2, #manager:list())
 manager:close(1)
@@ -526,6 +703,53 @@ assert_truthy(state.sessions[1].buffer ~= state.sessions[2].buffer)
 assert_equal("Toggle agent terminal", find_mapping(state.sessions[1].buffer, "<C-F><C-F>").desc)
 assert_equal("Enter Terminal-Normal mode", find_mapping(state.sessions[1].buffer, "<C-F>f").desc)
 
+local sent_channel = nil
+local sent_terminal_text = nil
+local original_chan_send = vim.api.nvim_chan_send
+vim.api.nvim_chan_send = function(channel, text)
+  sent_channel = channel
+  sent_terminal_text = text
+end
+local terminal_send_ok, terminal_send_error = pcall(function()
+  manager:list()[2].backend:send("source.lua:2-4")
+end)
+vim.api.nvim_chan_send = original_chan_send
+assert_equal(true, terminal_send_ok)
+assert_equal(nil, terminal_send_error)
+assert_equal(manager:list()[2].backend.job, sent_channel)
+assert_equal("source.lua:2-4", sent_terminal_text)
+
+local editor_window = nil
+for _, window in ipairs(vim.api.nvim_list_wins()) do
+  if window ~= state.sidebar.window then
+    editor_window = window
+    break
+  end
+end
+assert_truthy(editor_window)
+vim.api.nvim_set_current_win(editor_window)
+vim.api.nvim_win_set_buf(editor_window, context_buffer)
+vim.api.nvim_win_set_cursor(editor_window, { 1, 1 })
+vim.cmd("normal! v2l")
+vim.cmd("normal! \27")
+sent_channel = nil
+sent_terminal_text = nil
+original_chan_send = vim.api.nvim_chan_send
+vim.api.nvim_chan_send = function(channel, text)
+  sent_channel = channel
+  sent_terminal_text = text
+end
+local command_context_ok, command_context_error = pcall(vim.cmd, "'<,'>Agents context")
+vim.api.nvim_chan_send = original_chan_send
+assert_equal(true, command_context_ok)
+assert_equal("", command_context_error)
+assert_equal(manager:active().backend.job, sent_channel)
+assert_equal(
+  ("%s:1:2-1:4"):format(resolved_context_path),
+  sent_terminal_text
+)
+assert_equal(state.sidebar.window, vim.api.nvim_get_current_win())
+
 local sidebar_window = state.sidebar.window
 assert_truthy(sidebar_window)
 local winbar = vim.wo[sidebar_window].winbar
@@ -567,6 +791,8 @@ assert_equal({ "2", "3" }, commands.complete("", "Agents select "))
 
 manager:close_all()
 vim.api.nvim_buf_delete(modified_buffer, { force = true })
+vim.api.nvim_buf_delete(context_buffer, { force = true })
+vim.fn.delete(context_root, "rf")
 session_manager._reset_for_tests()
 
 print("agents.nvim tests passed")

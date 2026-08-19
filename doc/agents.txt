@@ -19,6 +19,7 @@ SETUP                                                               *agents-setu
     mappings = {
       toggle = "<C-f><C-f>",
       escape = "<C-f>f",
+      context = "<C-f>p",
     },
     refresh = {
       enabled = true,
@@ -34,7 +35,8 @@ SETUP                                                               *agents-setu
 The toggle mapping shows or hides the agent window without stopping its job. It
 works from Normal mode and the agent terminal. The escape mapping is local to
 the agent terminal and enters Terminal-Normal mode; press |i| to return to
-Terminal mode. Set a mapping to false to disable it.
+Terminal mode. The context mapping works in Visual mode. Set a mapping to
+false to disable it.
 
 Each open, resume, or continue action creates a new plugin session. Sessions
 share one sidebar and remain running when hidden. The sidebar winbar displays
@@ -82,6 +84,14 @@ COMMANDS                                                         *agents-command
 :Agents select [session-id]
     Select a plugin session. Omitting the ID opens a picker.
 
+                                                   *:Agents-context*
+:'<,'>Agents context
+    Paste the current characterwise or linewise Visual selection into the
+    active running chat as a file path and range, without submitting it. The
+    file must be saved. Blockwise selections are not supported. After the
+    reference is inserted, the sidebar is focused in Terminal mode. Claude
+    references use an @ prefix; Codex references use the plain path.
+
                                                    *:Agents-stop*
 :Agents stop [session-id]
     Stop a session while retaining its terminal transcript. The active session
@@ -96,6 +106,9 @@ COMMANDS                                                         *agents-command
 :Agents health
     Report whether configured providers are executable.
 
+The context operation is also available as require("agents").context(). It is
+intended for Visual-mode mappings.
+
 ==============================================================================
 PROVIDERS                                                       *agents-providers*
 
@@ -104,5 +117,7 @@ build_command(action, options, config). build_command returns a list whose
 first element is the executable and remaining elements are its arguments.
 Providers can share the adapter factory in lua/agents/providers/adapter.lua
 and can be registered with require("agents.providers").register().
+An adapter may set context_prefix when its CLI has stable file-mention syntax;
+the default is an empty prefix.
 
 vim:tw=78:ts=8:noet:ft=help:norl:

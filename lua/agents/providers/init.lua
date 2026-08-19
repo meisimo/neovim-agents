@@ -14,6 +14,9 @@ local function validate(name, provider)
       error(("agents.nvim: provider %q must implement %s()"):format(name, method))
     end
   end
+  if provider.context_prefix ~= nil and type(provider.context_prefix) ~= "string" then
+    error(("agents.nvim: provider %q context_prefix must be a string"):format(name))
+  end
   return provider
 end
 

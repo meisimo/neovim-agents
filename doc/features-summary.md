@@ -33,16 +33,27 @@ The purpose of this document is to serve as a guideline for design and architect
 ### Neovim files automatic refresh
 
 - Description: If a chat modifies a file that is open in a tab the user will see the changes on the fly without having to reopen the file.
-- **Status**: In progress; the provider-independent refresh service and event integration are
-  implemented
+- **Status**: Done
 - Loaded file buffers are checked on `BufEnter`, `FocusGained`, and `CursorHold` by default.
 - Buffers with unsaved changes and non-file buffers are skipped. The first version is event-driven
   and does not use filesystem watchers.
+- Automated headless coverage and interactive manual verification cover clean refreshes, unsaved
+  buffer safety, targeted and all-buffer refreshes, special buffers, and autocmd lifecycle.
+- Possible future improvements include broader Neovim-version testing and filesystem watchers if
+  event-driven refresh latency proves insufficient.
 
 ### Copy from file to the chat
 
 - **Description**: A selected region of a file can be easily copy and paste to the chat, that is, if a user selects the from line 6 char 23 to line 14 char 78 in the file `src/module-a/init.py` then he can copy directly to the `chat` with a command or a shortcut the path to that region so the model in that chat may read it later when the prompt is sent.
-- **Status**: Pending to be designed
+- **Status**: Done for saved files and native terminal sessions
+- `:Agents context` and `require("agents").context()` convert characterwise or linewise Visual
+  selections to provider-neutral file references and insert them without submitting the prompt.
+- `<C-f>p` invokes the context operation from Visual mode by default.
+- Claude Code references use its `@` file prefix; Codex and providers without a configured prefix
+  receive the plain path and range.
+- Paths inside the active session working directory are relative; paths outside it are absolute.
+- Modified buffers and blockwise selections are rejected so the reference cannot silently point to
+  stale or ambiguous content.
 
 ### Chat switch support
 

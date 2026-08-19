@@ -46,4 +46,8 @@ function M.select(session_id)
   require("agents.commands").execute({ "select", session_id })
 end
 
+function M.context()
+  require("agents.commands").execute({ "context" })
+end
+
 return M

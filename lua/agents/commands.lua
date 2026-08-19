@@ -16,9 +16,11 @@ local actions = {
   "next",
   "prev",
   "select",
+  "context",
   "health",
 }
 local registered_toggle_mapping = nil
+local registered_context_mapping = nil
 
 local function notify(message, level)
   vim.notify(message, level or vim.log.levels.INFO, { title = "agents.nvim" })
@@ -68,12 +70,12 @@ local function health()
   notify(table.concat(lines, "\n"))
 end
 
-function M.execute(arguments)
+function M.execute(arguments, command_options)
   local parsed = M.parse(arguments)
   local action = parsed.action
   if not action or action == "" then
     notify(
-      "Usage: Agents <open|resume|continue|toggle|stop|close|next|prev|select|health>",
+      "Usage: Agents <open|resume|continue|toggle|stop|close|next|prev|select|context|health>",
       vim.log.levels.WARN
     )
     return
@@ -98,6 +100,20 @@ function M.execute(arguments)
     else
       manager:pick()
     end
+  elseif action == "context" then
+    local context = require("agents.context")
+    local selection
+    if command_options and command_options.from_command then
+      selection = context.capture_command(
+        command_options.bufnr,
+        command_options.line1,
+        command_options.line2,
+        command_options.range
+      )
+    else
+      selection = context.capture_visual()
+    end
+    manager:add_context(selection)
   elseif action == "health" then
     health()
   elseif action == "open" then
@@ -111,9 +127,9 @@ function M.execute(arguments)
   end
 end
 
-function M.execute_safe(arguments)
+function M.execute_safe(arguments, command_options)
   local ok, err = xpcall(function()
-    M.execute(arguments)
+    M.execute(arguments, command_options)
   end, debug.traceback)
   if not ok then
     log.error(err)
@@ -155,9 +171,16 @@ end
 function M.register()
   sidebar.install_click_handler()
   vim.api.nvim_create_user_command("Agents", function(options)
-    M.execute_safe(options.fargs)
+    M.execute_safe(options.fargs, {
+      from_command = true,
+      bufnr = vim.api.nvim_get_current_buf(),
+      line1 = options.line1,
+      line2 = options.line2,
+      range = options.range,
+    })
   end, {
     nargs = "*",
+    range = true,
     complete = M.complete,
     desc = "Manage coding-agent CLI sessions",
     force = true,
@@ -172,6 +195,19 @@ function M.register()
       M.execute_safe({ "toggle" })
     end, {
       desc = "Toggle agent terminal",
+      silent = true,
+    })
+  end
+
+  if registered_context_mapping then
+    pcall(vim.keymap.del, "x", registered_context_mapping)
+  end
+  registered_context_mapping = config.options.mappings.context or nil
+  if registered_context_mapping then
+    vim.keymap.set("x", registered_context_mapping, function()
+      M.execute_safe({ "context" })
+    end, {
+      desc = "Add file range to agent chat",
       silent = true,
     })
   end

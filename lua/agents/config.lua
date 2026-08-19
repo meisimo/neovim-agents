@@ -11,6 +11,7 @@ M.defaults = {
   mappings = {
     toggle = "<C-f><C-f>",
     escape = "<C-f>f",
+    context = "<C-f>p",
   },
   refresh = {
     enabled = true,

@@ -326,6 +326,8 @@ hard limit on concurrently running native processes.
 
 ### Copy a file range to chat
 
+This feature is implemented for native terminal sessions.
+
 File selections are represented as provider-neutral context references:
 
 ```lua
@@ -342,12 +344,13 @@ File selections are represented as provider-neutral context references:
 The default text representation is deliberately plain:
 
 ```text
-Inspect `src/module-a/init.py:6:23-14:78`
+src/module-a/init.py:6:23-14:78
 ```
 
 - Native mode pastes the reference into the active CLI input without submitting it.
 - Structured mode adds the reference to the active draft.
-- A provider may override presentation when it has stable file-reference syntax.
+- A provider may add a stable file-reference prefix. Claude Code uses `@`; Codex uses the plain
+  reference.
 
 The core model must not depend on provider-specific `@file` or mention syntax.
 
@@ -458,7 +461,9 @@ error instead of silently changing execution behavior.
 
 ## Implementation sequence
 
-The native-terminal portions of phases 1 and 2 are implemented. Later phases remain planned.
+The native-terminal portions of phases 1 and 2, file-range context references, and automatic
+buffer refresh from phase 3 are implemented. The remaining phase 3 feature and later phases remain
+planned.
 
 ### Phase 1: Separate responsibilities
 
@@ -476,8 +481,8 @@ The native-terminal portions of phases 1 and 2 are implemented. Later phases rem
 
 ### Phase 3: Provider-independent workspace features
 
-- Add file-range context references.
-- Add safe automatic buffer refresh. (In progress: service and event integration implemented.)
+- Add file-range context references. (Implemented.)
+- Add safe automatic buffer refresh. (Implemented and manually verified.)
 - Add session-baseline change tracking and navigation.
 
 ### Phase 4: Capabilities and structured events

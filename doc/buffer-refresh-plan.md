@@ -2,15 +2,17 @@
 
 ## Status
 
-Planned on branch `feat/automatic-buffer-refresh`.
+Implemented and manually verified. The first event-driven version is complete; compatibility
+matrix expansion, formatter automation, and filesystem-watcher experiments are deferred
+improvements.
 
 ## Objective
 
 Keep loaded file buffers synchronized with changes made outside Neovim, including changes made by
 agent processes, without coupling the feature to a provider or terminal session.
 
-The first version will use Neovim's external-change detection. It will not watch the filesystem,
-parse agent output, or attempt to attribute changes to a particular agent.
+The first version uses Neovim's external-change detection. It does not watch the filesystem, parse
+agent output, or attempt to attribute changes to a particular agent.
 
 ## User experience
 
@@ -29,8 +31,8 @@ require("agents").setup({
 })
 ```
 
-The initial release will not add a user command. The refresh service will expose Lua functions so
-later workspace features can request targeted checks.
+The initial release does not add a user command. The refresh service exposes Lua functions so later
+workspace features can request targeted checks.
 
 ## Scope
 
@@ -194,20 +196,20 @@ Tests must preserve and restore global options and autocmd state that could affe
 
 ### 5. Documentation
 
-- Add refresh defaults and behavior to `README.md`.
-- Add the option and safety guarantee to `doc/agents.txt`.
-- Mark automatic buffer refresh as implemented in `doc/features-summary.md`.
-- Update the implementation status and module layout in `doc/architecture.md`.
-- State that the first version is event-driven and does not use filesystem watchers.
+- [x] Add refresh defaults and behavior to `README.md`.
+- [x] Add the option and safety guarantee to `doc/agents.txt`.
+- [x] Mark automatic buffer refresh as implemented in `doc/features-summary.md`.
+- [x] Update the implementation status and module layout in `doc/architecture.md`.
+- [x] State that the first version is event-driven and does not use filesystem watchers.
 
 ### 6. Verification
 
 - [x] **Automated:** Run the complete headless Neovim test suite.
-- [ ] **Automated/CI:** Run the suite on Neovim 0.10, the minimum supported version.
-- [ ] **Automated/tooling:** Run the Lua formatter or formatting check when available.
+- [ ] **Deferred:** Run the suite on Neovim 0.10, the minimum supported version.
+- [ ] **Deferred:** Run the Lua formatter or formatting check when available.
 - [x] **Automated/tooling:** Run `git diff --check`.
-- [ ] **Manual:** Verify that an external edit refreshes a clean buffer in interactive Neovim.
-- [ ] **Manual:** Verify that an external edit cannot overwrite an unsaved buffer in interactive
+- [x] **Manual:** Verify that an external edit refreshes a clean buffer in interactive Neovim.
+- [x] **Manual:** Verify that an external edit cannot overwrite an unsaved buffer in interactive
   Neovim, and that a later check succeeds after the local change is deliberately discarded or
   saved.
 
@@ -224,11 +226,14 @@ The feature is complete when:
 - Automated tests cover the safety and lifecycle cases above.
 - README, help, architecture, and feature-summary documentation agree with the implementation.
 
+All first-version acceptance criteria are satisfied. The unchecked compatibility and tooling
+items above remain follow-up quality improvements and do not block moving to the next feature.
+
 ## Follow-up work
 
 The modified-files utility can call `refresh_path(path)` whenever its change tracker discovers a
 specific path. A later filesystem-watcher implementation may call the same function for lower
 latency without changing refresh policy or provider integrations.
 
-The next Phase 3 feature after refresh should be file-range context references, followed by
+File-range context references are now implemented. The next Phase 3 feature should be
 session-baseline change tracking and navigation.

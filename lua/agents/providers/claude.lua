@@ -3,6 +3,7 @@ local adapter = require("agents.providers.adapter")
 return adapter.new({
   name = "claude",
   command = "claude",
+  context_prefix = "@",
   actions = {
     open = function()
       return {}
