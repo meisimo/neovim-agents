@@ -17,9 +17,15 @@ SETUP                                                               *agents-setu
     close_on_exit = true,
     window = { position = "right", size = 0.4 },
     mappings = {
-      toggle = "<C-f><C-f>",
-      escape = "<C-f>f",
-      context = "<C-f>p",
+      prefix = "<C-f>",
+      toggle = "<prefix>",
+      escape = "f",
+      context = "p",
+      changes = "d",
+      next_change = "dj",
+      previous_change = "dk",
+      next = "l",
+      previous = "h",
     },
     refresh = {
       enabled = true,
@@ -32,10 +38,14 @@ SETUP                                                               *agents-setu
   })
 <
 
-The toggle mapping shows or hides the agent window without stopping its job. It
-works from Normal mode and the agent terminal. The escape mapping is local to
-the agent terminal and enters Terminal-Normal mode; press |i| to return to
-Terminal mode. The context mapping works in Visual mode. Set a mapping to
+Each mapping joins mappings.prefix with its action suffix. The special
+"<prefix>" suffix means the prefix itself, so the default toggle is
+<C-f><C-f>. The toggle mapping shows or hides the agent window without
+stopping its job. It works from Normal mode and the agent terminal. The escape
+mapping is local to the agent terminal and enters Terminal-Normal mode; press
+|i| to return to Terminal mode. The context mapping works in Visual mode.
+Change review and session navigation work in Normal mode. Their defaults are
+<C-f>d, <C-f>dj, <C-f>dk, <C-f>l, and <C-f>h, respectively. Set an action to
 false to disable it.
 
 Each open, resume, or continue action creates a new plugin session. Sessions

@@ -12,7 +12,7 @@ The purpose of this document is to serve as a guideline for design and architect
 - **Status**: Done
 - **Usability**:
   - **Commands**: `:Agents open [provider]`, `:Agents resume [provider] [session-id]`, `:Agents continue [provider]`, `:Agents toggle`, `:Agents stop [session-id]`, `:Agents close [session-id]`, and `:Agents health`
-  - **Shortcuts**: `<C-f><C-f>` toggles the sidebar and `<C-f>f` leaves Terminal mode by default. Both mappings are configurable.
+- **Shortcuts**: `<C-f><C-f>` toggles the sidebar, `<C-f>f` leaves Terminal mode, `<C-f>l` / `<C-f>h` switch sessions, and `<C-f>d` opens the active session's changes by default. The shared `<C-f>` prefix and action suffixes are configurable.
 - Each agent process runs in its own terminal buffer. Starting an agent does not replace the current editing buffer, so a file with unsaved changes can remain open and modified while the agent starts.
 - Improvements & known issues:
   - Changing between output block and input block is not good and doesnt feel well integrated.
@@ -31,6 +31,7 @@ The purpose of this document is to serve as a guideline for design and architect
   baseline, then move between those files in a side-by-side diff.
 - **Status**: Done for Git worktrees and session-scoped native terminal sessions
 - `:Agents changes [session-id]` opens a status-labeled picker and an editable diff review.
+- `<C-f>dj` and `<C-f>dk` navigate to the next and previous changed files by default.
 - `:Agents next-change` and `:Agents prev-change` navigate the captured change list.
 - `:Agents reset-changes [session-id]` captures the current workspace as the new baseline.
 - Pre-existing edits, the real Git index, and unsaved Neovim buffers are preserved.
