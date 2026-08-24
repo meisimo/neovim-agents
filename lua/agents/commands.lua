@@ -1,4 +1,5 @@
 local config = require("agents.config")
+local mappings = require("agents.mappings")
 local log = require("agents.log")
 local providers = require("agents.providers")
 local session_manager = require("agents.core.session_manager")
@@ -23,8 +24,17 @@ local actions = {
   "reset-changes",
   "health",
 }
-local registered_toggle_mapping = nil
+local registered_normal_mappings = {}
 local registered_context_mapping = nil
+
+local normal_mapping_actions = {
+  toggle = { command = "toggle", desc = "Toggle agent terminal" },
+  changes = { command = "changes", desc = "Review current agent session changes" },
+  next_change = { command = "next-change", desc = "Review next agent session change" },
+  previous_change = { command = "prev-change", desc = "Review previous agent session change" },
+  next = { command = "next", desc = "Select next agent session" },
+  previous = { command = "prev", desc = "Select previous agent session" },
+}
 
 local function notify(message, level)
   vim.notify(message, level or vim.log.levels.INFO, { title = "agents.nvim" })
@@ -211,23 +221,27 @@ function M.register()
     force = true,
   })
 
-  if registered_toggle_mapping then
-    pcall(vim.keymap.del, "n", registered_toggle_mapping)
+  for _, lhs in pairs(registered_normal_mappings) do
+    pcall(vim.keymap.del, "n", lhs)
   end
-  registered_toggle_mapping = config.options.mappings.toggle or nil
-  if registered_toggle_mapping then
-    vim.keymap.set("n", registered_toggle_mapping, function()
-      M.execute_safe({ "toggle" })
-    end, {
-      desc = "Toggle agent terminal",
-      silent = true,
-    })
+  registered_normal_mappings = {}
+  for action, mapping in pairs(normal_mapping_actions) do
+    local lhs = mappings.resolve(config.options.mappings, action)
+    if lhs then
+      registered_normal_mappings[action] = lhs
+      vim.keymap.set("n", lhs, function()
+        M.execute_safe({ mapping.command })
+      end, {
+        desc = mapping.desc,
+        silent = true,
+      })
+    end
   end
 
   if registered_context_mapping then
     pcall(vim.keymap.del, "x", registered_context_mapping)
   end
-  registered_context_mapping = config.options.mappings.context or nil
+  registered_context_mapping = mappings.resolve(config.options.mappings, "context")
   if registered_context_mapping then
     vim.keymap.set("x", registered_context_mapping, function()
       M.execute_safe({ "context" })

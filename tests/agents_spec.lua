@@ -18,6 +18,14 @@ local function find_mapping(buffer, lhs)
   end
 end
 
+local function find_global_mapping(mode, lhs)
+  for _, mapping in ipairs(vim.api.nvim_get_keymap(mode)) do
+    if mapping.lhs:lower() == lhs:lower() then
+      return mapping
+    end
+  end
+end
+
 local claude = require("agents.providers.claude")
 local codex = require("agents.providers.codex")
 local providers = require("agents.providers")
@@ -67,11 +75,18 @@ assert_equal(
 assert_equal({ "claude", "codex", "example" }, providers.names())
 
 local agents = require("agents")
+local mappings = require("agents.mappings")
 agents.setup()
 assert_equal(2, vim.fn.exists(":Agents"))
-assert_equal("<C-f><C-f>", require("agents.config").options.mappings.toggle)
-assert_equal("<C-f>f", require("agents.config").options.mappings.escape)
-assert_equal("<C-f>p", require("agents.config").options.mappings.context)
+assert_equal("<C-f>", require("agents.config").options.mappings.prefix)
+assert_equal("<prefix>", require("agents.config").options.mappings.toggle)
+assert_equal("f", require("agents.config").options.mappings.escape)
+assert_equal("p", require("agents.config").options.mappings.context)
+assert_equal("d", require("agents.config").options.mappings.changes)
+assert_equal("dj", require("agents.config").options.mappings.next_change)
+assert_equal("dk", require("agents.config").options.mappings.previous_change)
+assert_equal("l", require("agents.config").options.mappings.next)
+assert_equal("h", require("agents.config").options.mappings.previous)
 assert_equal(true, require("agents.config").options.close_on_exit)
 assert_equal(
   { enabled = true, events = { "BufEnter", "FocusGained", "CursorHold" } },
@@ -79,6 +94,44 @@ assert_equal(
 )
 assert_equal("Toggle agent terminal", vim.fn.maparg("<C-f><C-f>", "n", false, true).desc)
 assert_equal("Add file range to agent chat", vim.fn.maparg("<C-f>p", "x", false, true).desc)
+assert_equal("Review current agent session changes", vim.fn.maparg("<C-f>d", "n", false, true).desc)
+assert_equal("Review next agent session change", vim.fn.maparg("<C-f>dj", "n", false, true).desc)
+assert_equal(
+  "Review previous agent session change",
+  vim.fn.maparg("<C-f>dk", "n", false, true).desc
+)
+assert_equal("Select next agent session", vim.fn.maparg("<C-f>l", "n", false, true).desc)
+assert_equal("Select previous agent session", vim.fn.maparg("<C-f>h", "n", false, true).desc)
+local commands = require("agents.commands")
+local original_execute_safe = commands.execute_safe
+local mapped_commands = {}
+commands.execute_safe = function(arguments)
+  table.insert(mapped_commands, arguments[1])
+end
+for _, lhs in ipairs({ "<C-f>d", "<C-f>dj", "<C-f>dk", "<C-f>l", "<C-f>h" }) do
+  find_global_mapping("n", lhs).callback()
+end
+commands.execute_safe = original_execute_safe
+assert_equal({ "changes", "next-change", "prev-change", "next", "prev" }, mapped_commands)
+agents.setup({ mappings = { prefix = "<C-g>" } })
+assert_equal("", vim.fn.maparg("<C-f><C-f>", "n"))
+assert_equal("", vim.fn.maparg("<C-f>d", "n"))
+assert_equal("", vim.fn.maparg("<C-f>dj", "n"))
+assert_equal("", vim.fn.maparg("<C-f>dk", "n"))
+assert_equal("", vim.fn.maparg("<C-f>l", "n"))
+assert_equal("", vim.fn.maparg("<C-f>h", "n"))
+assert_equal("Toggle agent terminal", vim.fn.maparg("<C-g><C-g>", "n", false, true).desc)
+assert_equal("Add file range to agent chat", vim.fn.maparg("<C-g>p", "x", false, true).desc)
+assert_equal("Review current agent session changes", vim.fn.maparg("<C-g>d", "n", false, true).desc)
+assert_equal("Review next agent session change", vim.fn.maparg("<C-g>dj", "n", false, true).desc)
+assert_equal(
+  "Review previous agent session change",
+  vim.fn.maparg("<C-g>dk", "n", false, true).desc
+)
+assert_equal("Select next agent session", vim.fn.maparg("<C-g>l", "n", false, true).desc)
+assert_equal("Select previous agent session", vim.fn.maparg("<C-g>h", "n", false, true).desc)
+assert_equal("<C-g>x", mappings.resolve({ prefix = "<C-g>", custom = "x" }, "custom"))
+assert_equal(nil, mappings.resolve({ prefix = "<C-g>", custom = false }, "custom"))
 agents.setup({ window = { position = "bottom" } })
 assert_equal("bottom", require("agents.config").options.window.position)
 assert_equal(2, vim.fn.exists(":Agents"))
@@ -283,6 +336,13 @@ local function assert_config_error(options, pattern)
   assert_truthy(config_error:find(pattern))
 end
 
+assert_config_error({ mappings = false }, "mappings must be a table")
+assert_config_error(
+  { mappings = { prefix = false } },
+  "mappings.prefix must be a non%-empty string"
+)
+assert_config_error({ mappings = { escape = 1 } }, "mappings.escape must be a string or false")
+assert_config_error({ mappings = { changes = 1 } }, "mappings.changes must be a string or false")
 assert_config_error({ refresh = false }, "refresh must be a table")
 assert_config_error({ refresh = { enabled = "yes" } }, "refresh.enabled must be a boolean")
 assert_config_error({ refresh = { events = "BufEnter" } }, "refresh.events must be a list")

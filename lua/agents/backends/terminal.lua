@@ -1,4 +1,5 @@
 local M = {}
+local mappings = require("agents.mappings")
 
 local Backend = {}
 Backend.__index = Backend
@@ -47,8 +48,9 @@ function M.new(options)
 end
 
 function Backend:_set_mappings()
-  if self.mappings.toggle then
-    vim.keymap.set("t", self.mappings.toggle, function()
+  local toggle = mappings.resolve(self.mappings, "toggle")
+  if toggle then
+    vim.keymap.set("t", toggle, function()
       if self.on_toggle then
         self.on_toggle()
       end
@@ -59,8 +61,9 @@ function Backend:_set_mappings()
     })
   end
 
-  if self.mappings.escape then
-    vim.keymap.set("t", self.mappings.escape, [[<C-\><C-n>]], {
+  local escape = mappings.resolve(self.mappings, "escape")
+  if escape then
+    vim.keymap.set("t", escape, [[<C-\><C-n>]], {
       buffer = self.bufnr,
       desc = "Enter Terminal-Normal mode",
       silent = true,

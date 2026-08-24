@@ -55,9 +55,15 @@ require("agents").setup({
     size = 0.4,         -- fraction of the editor, or an absolute size
   },
   mappings = {
-    toggle = "<C-f><C-f>", -- Show or hide the terminal, preserving its session
-    escape = "<C-f>f",     -- Enter Neovim's Terminal-Normal mode
-    context = "<C-f>p",    -- Paste the Visual selection's file reference
+    prefix = "<C-f>",      -- Shared prefix for plugin mappings
+    toggle = "<prefix>",   -- Press the prefix twice to toggle the terminal
+    escape = "f",          -- Enter Neovim's Terminal-Normal mode
+    context = "p",         -- Paste the Visual selection's file reference
+    changes = "d",         -- Review changes for the active session
+    next_change = "dj",    -- Review the next changed file
+    previous_change = "dk", -- Review the previous changed file
+    next = "l",            -- Select the next session
+    previous = "h",        -- Select the previous session
   },
   refresh = {
     enabled = true,
@@ -76,10 +82,13 @@ require("agents").setup({
 })
 ```
 
-The toggle mapping works in normal buffers and in the agent terminal, but does not affect other
-terminal windows. The escape mapping is local to the agent terminal, and the context mapping works
-in Visual mode. Set any value to `false` to disable that mapping. After using the escape mapping,
-press `i` to send input to the agent again.
+Each mapping is formed by joining `mappings.prefix` with its action suffix. The special
+`"<prefix>"` suffix means the prefix itself, making the default toggle `<C-f><C-f>`. The toggle
+mapping works in normal buffers and in the agent terminal, but does not affect other terminal
+windows. The escape mapping is local to the agent terminal, and the context mapping works in
+Visual mode. Change review and session navigation mappings work in Normal mode. Their defaults are
+`<C-f>d`, `<C-f>dj`, `<C-f>dk`, `<C-f>l`, and `<C-f>h`, respectively. Set an action to `false` to
+disable it. After using the escape mapping, press `i` to send input to the agent again.
 
 Buffer refresh asks Neovim to check loaded file buffers for external changes on the configured
 events. `FocusGained` checks every loaded file buffer; the other supported events check only their
