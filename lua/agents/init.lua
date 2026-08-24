@@ -50,4 +50,20 @@ function M.context()
   require("agents.commands").execute({ "context" })
 end
 
+function M.changes(session_id)
+  require("agents.commands").execute({ "changes", session_id })
+end
+
+function M.next_change()
+  require("agents.commands").execute({ "next-change" })
+end
+
+function M.previous_change()
+  require("agents.commands").execute({ "prev-change" })
+end
+
+function M.reset_changes(session_id)
+  require("agents.commands").execute({ "reset-changes", session_id })
+end
+
 return M

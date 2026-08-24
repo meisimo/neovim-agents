@@ -52,6 +52,11 @@ events list to install no refresh autocommands. Supported events are BufEnter,
 FocusGained, and CursorHold. This implementation is event-driven and does not
 install a filesystem watcher.
 
+Each session started inside a Git worktree captures the visible workspace as a
+private baseline before its agent process launches. This does not modify the
+real Git index or working files. Change review is explicitly requested because
+native terminal providers do not expose a reliable prompt-completion event.
+
 ==============================================================================
 COMMANDS                                                         *agents-commands*
 
@@ -92,6 +97,27 @@ COMMANDS                                                         *agents-command
     reference is inserted, the sidebar is focused in Terminal mode. Claude
     references use an @ prefix; Codex references use the plain path.
 
+                                                   *:Agents-changes*
+:Agents changes [session-id]
+    List Git workspace files that currently differ from the selected session's
+    baseline. Selecting a file opens the read-only baseline beside the editable
+    current file in a diff tab. The active session is used when the ID is
+    omitted. Pre-existing edits are excluded unless they change again.
+
+                                                   *:Agents-next-change*
+:Agents next-change
+    Review the next file in the captured change list, wrapping at the end.
+
+                                                   *:Agents-prev-change*
+:Agents prev-change
+    Review the previous file in the captured change list, wrapping at the
+    beginning. Use |[c| and |]c| to move between hunks within a file.
+
+                                                   *:Agents-reset-changes*
+:Agents reset-changes [session-id]
+    Capture the current Git workspace as the selected session's new baseline.
+    This invalidates its current navigation list without changing the Git index.
+
                                                    *:Agents-stop*
 :Agents stop [session-id]
     Stop a session while retaining its terminal transcript. The active session
@@ -108,6 +134,14 @@ COMMANDS                                                         *agents-command
 
 The context operation is also available as require("agents").context(). It is
 intended for Visual-mode mappings.
+
+Change review is also available through require("agents").changes(id),
+next_change(), previous_change(), and reset_changes(id). It represents current
+workspace differences since the plugin session baseline; concurrent edits by
+the user or another process cannot be conclusively attributed to the agent.
+Ignored files and submodule-internal worktree changes are outside version-one
+tracking. Sessions still open outside Git, but their change command reports the
+tracking error.
 
 ==============================================================================
 PROVIDERS                                                       *agents-providers*

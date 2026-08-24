@@ -369,6 +369,8 @@ Neovim's normal external-change and conflict behavior remains authoritative.
 
 ### Modified-files utility
 
+Session-baseline change tracking and navigation are implemented for Git worktrees.
+
 The design distinguishes two guarantees:
 
 1. **Session changes**: files changed since a session baseline.
@@ -387,10 +389,10 @@ Even with turn boundaries, a filesystem snapshot proves that a file changed duri
 does not necessarily prove that the agent caused the change. Provider-reported file events may
 improve attribution but should be verified against the workspace before navigation.
 
-The change list should support:
+The change list supports:
 
 - Open a file.
-- Open a diff when possible.
+- Open an editable side-by-side diff when possible.
 - Move to the next or previous changed file.
 - Reset the baseline.
 - Distinguish created, modified, deleted, and renamed paths where the source data allows it.
@@ -483,7 +485,7 @@ planned.
 
 - Add file-range context references. (Implemented.)
 - Add safe automatic buffer refresh. (Implemented and manually verified.)
-- Add session-baseline change tracking and navigation.
+- Add session-baseline change tracking and navigation. (Implemented for Git worktrees.)
 
 ### Phase 4: Capabilities and structured events
 

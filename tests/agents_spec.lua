@@ -90,6 +90,10 @@ assert_equal("function", type(agents.previous))
 assert_equal("function", type(agents.select))
 assert_equal("function", type(agents.close))
 assert_equal("function", type(agents.context))
+assert_equal("function", type(agents.changes))
+assert_equal("function", type(agents.next_change))
+assert_equal("function", type(agents.previous_change))
+assert_equal("function", type(agents.reset_changes))
 agents.setup({ mappings = { context = false } })
 assert_equal("", vim.fn.maparg("<C-f>p", "x"))
 agents.setup({ window = { position = "bottom" } })
@@ -299,6 +303,156 @@ vim.fn.delete(refresh_path)
 vim.fn.delete(unrelated_path)
 vim.fn.delete(unloaded_path)
 
+local change_tracker = require("agents.workspace.change_tracker")
+local changes_root = vim.fn.tempname()
+vim.fn.mkdir(changes_root, "p")
+
+local function git(arguments)
+  local command = { "git" }
+  vim.list_extend(command, arguments)
+  local result = vim.system(command, { cwd = changes_root, text = false }):wait()
+  if result.code ~= 0 then
+    error(result.stderr)
+  end
+  return result.stdout
+end
+
+git({ "init", "--quiet" })
+vim.fn.writefile({ "*.ignored" }, vim.fs.joinpath(changes_root, ".gitignore"))
+vim.fn.writefile({ "committed" }, vim.fs.joinpath(changes_root, "deleted.txt"))
+vim.fn.writefile({ "rename contents" }, vim.fs.joinpath(changes_root, "rename-old.txt"))
+vim.fn.writefile({ "committed" }, vim.fs.joinpath(changes_root, "tracked.txt"))
+git({ "add", "." })
+git({
+  "-c",
+  "user.name=agents.nvim tests",
+  "-c",
+  "user.email=agents@example.invalid",
+  "commit",
+  "--quiet",
+  "-m",
+  "initial",
+})
+
+vim.fn.writefile({ "pre-existing edit" }, vim.fs.joinpath(changes_root, "tracked.txt"))
+vim.fn.writefile({ "pre-existing untracked" }, vim.fs.joinpath(changes_root, "untracked.txt"))
+local status_before_capture = git({ "status", "--porcelain=v1", "-z" })
+local baseline = change_tracker.capture(changes_root)
+assert_equal(vim.uv.fs_realpath(changes_root), vim.uv.fs_realpath(baseline.root))
+assert_equal(status_before_capture, git({ "status", "--porcelain=v1", "-z" }))
+assert_equal("pre-existing edit\n", change_tracker.read(baseline, "tracked.txt"))
+
+vim.fn.writefile({ "agent edit" }, vim.fs.joinpath(changes_root, "tracked.txt"))
+vim.fn.writefile(
+  { "agent edit to prior untracked" },
+  vim.fs.joinpath(changes_root, "untracked.txt")
+)
+vim.fn.writefile({ "created" }, vim.fs.joinpath(changes_root, "created.txt"))
+vim.fn.writefile({ "odd path" }, vim.fs.joinpath(changes_root, "odd\tname.txt"))
+vim.fn.writefile({ "ignored" }, vim.fs.joinpath(changes_root, "generated.ignored"))
+vim.fn.delete(vim.fs.joinpath(changes_root, "deleted.txt"))
+vim.uv.fs_rename(
+  vim.fs.joinpath(changes_root, "rename-old.txt"),
+  vim.fs.joinpath(changes_root, "rename-new.txt")
+)
+
+local tracked_changes, current_snapshot = change_tracker.changes(baseline)
+local changes_by_path = {}
+for _, change in ipairs(tracked_changes) do
+  changes_by_path[change.path] = change
+end
+assert_equal("A", changes_by_path["created.txt"].status)
+assert_equal("D", changes_by_path["deleted.txt"].status)
+assert_equal("A", changes_by_path["odd\tname.txt"].status)
+assert_equal("R", changes_by_path["rename-new.txt"].status)
+assert_equal("rename-old.txt", changes_by_path["rename-new.txt"].old_path)
+assert_equal("M", changes_by_path["tracked.txt"].status)
+assert_equal("M", changes_by_path["untracked.txt"].status)
+assert_equal(nil, changes_by_path["generated.ignored"])
+assert_equal("agent edit\n", change_tracker.read(current_snapshot, "tracked.txt"))
+assert_equal(nil, change_tracker.read(current_snapshot, "deleted.txt"))
+
+vim.fn.writefile({ "pre-existing edit" }, vim.fs.joinpath(changes_root, "tracked.txt"))
+local reverted_changes = change_tracker.changes(baseline)
+local reverted_tracked = false
+for _, change in ipairs(reverted_changes) do
+  reverted_tracked = reverted_tracked or change.path == "tracked.txt"
+end
+assert_equal(false, reverted_tracked)
+
+local reset_baseline = change_tracker.capture(changes_root)
+assert_equal(0, #change_tracker.changes(reset_baseline))
+local non_git_root = vim.fn.tempname()
+vim.fn.mkdir(non_git_root, "p")
+local non_git_ok, non_git_error = pcall(change_tracker.capture, non_git_root)
+assert_equal(false, non_git_ok)
+assert_truthy(non_git_error:find("cannot capture workspace changes"))
+vim.fn.delete(non_git_root, "rf")
+
+local changes_ui_module = require("agents.ui.changes")
+assert_equal(
+  "[M] tracked.txt",
+  changes_ui_module.format_item({ status = "M", path = "tracked.txt" })
+)
+assert_equal(
+  "[R] old.lua → new.lua",
+  changes_ui_module.format_item({ status = "R", old_path = "old.lua", path = "new.lua" })
+)
+
+vim.fn.writefile({ "review current" }, vim.fs.joinpath(changes_root, "tracked.txt"))
+vim.fn.delete(vim.fs.joinpath(changes_root, "created.txt"))
+local review_changes, review_current = change_tracker.changes(reset_baseline)
+local selected_review_change = nil
+local original_ui_select = vim.ui.select
+local original_notify = vim.notify
+vim.ui.select = function(items, options, callback)
+  assert_equal("Session 77 changes since baseline", options.prompt)
+  for _, item in ipairs(items) do
+    if item.path == "tracked.txt" then
+      selected_review_change = item
+      break
+    end
+  end
+  callback(selected_review_change)
+end
+vim.notify = function() end
+
+local review_ui = changes_ui_module.new({ tracker = change_tracker, refresh = refresh })
+assert_equal(true, review_ui:pick({
+  id = 77,
+  change_tracking = { baseline = reset_baseline },
+}, review_changes, review_current))
+local review_state = review_ui:state()
+assert_truthy(review_state)
+assert_equal(#review_changes, review_state.count)
+assert_equal("nofile", vim.bo[vim.api.nvim_win_get_buf(review_state.left)].buftype)
+local review_file_buffer = vim.api.nvim_win_get_buf(review_state.right)
+assert_equal(
+  vim.uv.fs_realpath(vim.fs.joinpath(changes_root, "tracked.txt")),
+  vim.uv.fs_realpath(vim.api.nvim_buf_get_name(review_file_buffer))
+)
+assert_equal(true, vim.wo[review_state.left].diff)
+assert_equal(true, vim.wo[review_state.right].diff)
+
+vim.api.nvim_buf_set_lines(review_file_buffer, 0, -1, false, { "unsaved review edit" })
+review_ui:next()
+review_ui:previous()
+assert_equal(true, vim.api.nvim_buf_is_valid(review_file_buffer))
+assert_equal(true, vim.bo[review_file_buffer].modified)
+assert_equal(
+  { "unsaved review edit" },
+  vim.api.nvim_buf_get_lines(review_file_buffer, 0, -1, false)
+)
+review_ui:invalidate(77)
+assert_equal(nil, review_ui:state())
+assert_equal(false, review_ui:pick({ id = 77 }, {}, review_current))
+vim.bo[review_file_buffer].modified = false
+vim.cmd("tabclose")
+vim.ui.select = original_ui_select
+vim.notify = original_notify
+
+vim.fn.delete(changes_root, "rf")
+
 local context = require("agents.context")
 local context_root = vim.fn.tempname()
 vim.fn.mkdir(context_root, "p")
@@ -441,6 +595,13 @@ assert_equal({ action = "stop", session_id = "4" }, commands.parse({ "stop", "4"
 assert_equal({ action = "close", session_id = "3" }, commands.parse({ "close", "3" }))
 assert_equal({ action = "select", session_id = "2" }, commands.parse({ "select", "2" }))
 assert_equal({ action = "context" }, commands.parse({ "context" }))
+assert_equal({ action = "changes", session_id = "2" }, commands.parse({ "changes", "2" }))
+assert_equal({ action = "next-change" }, commands.parse({ "next-change" }))
+assert_equal({ action = "prev-change" }, commands.parse({ "prev-change" }))
+assert_equal(
+  { action = "reset-changes", session_id = "1" },
+  commands.parse({ "reset-changes", "1" })
+)
 
 local session_manager = require("agents.core.session_manager")
 
@@ -502,11 +663,57 @@ local function fake_manager()
     },
   }
   local backends = {}
-  local controls = { fail_start = false }
+  local controls = {
+    fail_start = false,
+    fail_capture = false,
+    captures = 0,
+    picked = nil,
+    moved = nil,
+    invalidated = {},
+  }
+  local fake_change_tracker = {}
+
+  function fake_change_tracker.capture(cwd)
+    if controls.fail_capture then
+      error("agents.nvim: fake tracking unavailable")
+    end
+    controls.captures = controls.captures + 1
+    return { root = cwd, tree = "tree-" .. controls.captures }
+  end
+
+  function fake_change_tracker.changes(baseline)
+    return { { status = "M", path = "changed.lua" } }, {
+      root = baseline.root,
+      tree = "current-tree",
+    }
+  end
+
+  local fake_changes_ui = {}
+
+  function fake_changes_ui:pick(session, changes, current)
+    controls.picked = { session = session, changes = changes, current = current }
+  end
+
+  function fake_changes_ui:next()
+    controls.moved = "next"
+    return { path = "changed.lua" }
+  end
+
+  function fake_changes_ui:previous()
+    controls.moved = "previous"
+    return { path = "changed.lua" }
+  end
+
+  function fake_changes_ui:invalidate(session_id)
+    table.insert(controls.invalidated, session_id or "all")
+  end
+
   local manager = session_manager.new({
     sidebar = fake_sidebar,
     providers = fake_registry,
     config = fake_config,
+    change_tracker = fake_change_tracker,
+    changes_ui = fake_changes_ui,
     backend_factory = function(options)
       local backend = {
         bufnr = options.id + 100,
@@ -576,6 +783,20 @@ assert_equal(2, #manager:list())
 assert_equal(2, manager:active().id)
 assert_equal(true, fake_backends[1].running)
 assert_equal(true, fake_backends[2].running)
+assert_equal(true, manager:state().sessions[1].change_tracking.available)
+assert_equal("/test/workspace", manager:state().sessions[1].change_tracking.root)
+local session_changes = manager:show_changes(1)
+assert_equal("changed.lua", session_changes[1].path)
+assert_equal(1, fake_controls.picked.session.id)
+assert_equal("current-tree", fake_controls.picked.current.tree)
+assert_equal("changed.lua", manager:next_change().path)
+assert_equal("next", fake_controls.moved)
+assert_equal("changed.lua", manager:previous_change().path)
+assert_equal("previous", fake_controls.moved)
+local old_baseline_tree = first.change_tracking.baseline.tree
+manager:reset_changes(1)
+assert_truthy(first.change_tracking.baseline.tree ~= old_baseline_tree)
+assert_equal(1, fake_controls.invalidated[#fake_controls.invalidated])
 assert_equal(1, manager:select_previous().id)
 assert_equal(2, manager:select_next().id)
 assert_equal(1, manager:select(1).id)
@@ -643,6 +864,18 @@ assert_equal(false, started)
 assert_truthy(start_error:find("fake launch failure"))
 assert_equal(1, #manager:list())
 assert_equal(2, manager:active().id)
+
+fake_controls.fail_capture = true
+local unavailable_tracking = manager:start("open", "test")
+fake_controls.fail_capture = false
+assert_equal(nil, unavailable_tracking.change_tracking.baseline)
+assert_truthy(unavailable_tracking.change_tracking.error:find("fake tracking unavailable"))
+local unavailable_changes_ok, unavailable_changes_error = pcall(function()
+  manager:show_changes(unavailable_tracking.id)
+end)
+assert_equal(false, unavailable_changes_ok)
+assert_truthy(unavailable_changes_error:find("fake tracking unavailable"))
+manager:close(unavailable_tracking.id)
 
 fake_config.options.close_on_exit = false
 local fourth = manager:start("open", "test")
@@ -788,6 +1021,8 @@ commands.execute({ "select", "3" })
 assert_truthy(manager:state().sidebar.window)
 assert_truthy(vim.wo[manager:state().sidebar.window].winbar:find("3:exit%-test x"))
 assert_equal({ "2", "3" }, commands.complete("", "Agents select "))
+assert_equal({ "2", "3" }, commands.complete("", "Agents changes "))
+assert_equal({ "2", "3" }, commands.complete("", "Agents reset-changes "))
 
 manager:close_all()
 vim.api.nvim_buf_delete(modified_buffer, { force = true })

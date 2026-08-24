@@ -27,8 +27,15 @@ The purpose of this document is to serve as a guideline for design and architect
 
 ### Modified files utility
 
-- **Description**: If after output is finished (a single prompt output) there were modified files the user can easily navigate through the modified files, that is, see a list were the modified files can by select and opened
-- **Status**: Pending to be designed
+- **Description**: Users can list and review Git workspace files changed since an agent session's
+  baseline, then move between those files in a side-by-side diff.
+- **Status**: Done for Git worktrees and session-scoped native terminal sessions
+- `:Agents changes [session-id]` opens a status-labeled picker and an editable diff review.
+- `:Agents next-change` and `:Agents prev-change` navigate the captured change list.
+- `:Agents reset-changes [session-id]` captures the current workspace as the new baseline.
+- Pre-existing edits, the real Git index, and unsaved Neovim buffers are preserved.
+- Native backends cannot prove per-turn or agent attribution, so the UI explicitly reports changes
+  since the session baseline.
 
 ### Neovim files automatic refresh
 

@@ -17,6 +17,10 @@ local actions = {
   "prev",
   "select",
   "context",
+  "changes",
+  "next-change",
+  "prev-change",
+  "reset-changes",
   "health",
 }
 local registered_toggle_mapping = nil
@@ -46,7 +50,13 @@ function M.parse(arguments)
   elseif action == "resume" then
     parsed.provider = provider_argument(arguments[2]) or config.options.default_provider
     parsed.session_id = parsed.provider == arguments[2] and arguments[3] or arguments[2]
-  elseif action == "stop" or action == "close" or action == "select" then
+  elseif
+    action == "stop"
+    or action == "close"
+    or action == "select"
+    or action == "changes"
+    or action == "reset-changes"
+  then
     parsed.session_id = arguments[2]
   end
 
@@ -75,7 +85,7 @@ function M.execute(arguments, command_options)
   local action = parsed.action
   if not action or action == "" then
     notify(
-      "Usage: Agents <open|resume|continue|toggle|stop|close|next|prev|select|context|health>",
+      ("Usage: Agents <%s>"):format(table.concat(actions, "|")),
       vim.log.levels.WARN
     )
     return
@@ -114,6 +124,15 @@ function M.execute(arguments, command_options)
       selection = context.capture_visual()
     end
     manager:add_context(selection)
+  elseif action == "changes" then
+    manager:show_changes(parsed.session_id)
+  elseif action == "next-change" then
+    manager:next_change()
+  elseif action == "prev-change" then
+    manager:previous_change()
+  elseif action == "reset-changes" then
+    manager:reset_changes(parsed.session_id)
+    notify("Workspace change baseline reset")
   elseif action == "health" then
     health()
   elseif action == "open" then
@@ -156,7 +175,13 @@ function M.complete(argument_lead, command_line)
     return matching(providers.names(), argument_lead)
   end
   if
-    (parts[2] == "select" or parts[2] == "stop" or parts[2] == "close")
+    (
+      parts[2] == "select"
+      or parts[2] == "stop"
+      or parts[2] == "close"
+      or parts[2] == "changes"
+      or parts[2] == "reset-changes"
+    )
     and (#parts == 2 or (#parts == 3 and not command_line:match("%s$")))
   then
     local session_ids = {}

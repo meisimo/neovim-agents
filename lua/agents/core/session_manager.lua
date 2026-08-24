@@ -2,6 +2,8 @@ local config = require("agents.config")
 local providers = require("agents.providers")
 local terminal = require("agents.backends.terminal")
 local sidebar_module = require("agents.ui.sidebar")
+local changes_module = require("agents.ui.changes")
+local change_tracker = require("agents.workspace.change_tracker")
 local context = require("agents.context")
 
 local M = {}
@@ -40,6 +42,8 @@ function M.new(options)
     backend_factory = options.backend_factory or default_backend_factory,
     provider_registry = options.providers or providers,
     config = options.config or config,
+    change_tracker = options.change_tracker or change_tracker,
+    changes_ui = options.changes_ui or changes_module.new(),
   }, Manager)
 end
 
@@ -100,6 +104,7 @@ function Manager:_show_active()
 end
 
 function Manager:_remove(session)
+  self.changes_ui:invalidate(session.id)
   local removed_index = nil
   for index, id in ipairs(self.order) do
     if id == session.id then
@@ -175,7 +180,15 @@ function Manager:start(action, provider_name, action_options)
     context_prefix = provider.context_prefix or "",
     status = "starting",
     exit_code = nil,
+    change_tracking = {},
   }
+
+  local captured, baseline_or_error = pcall(self.change_tracker.capture, session.cwd)
+  if captured then
+    session.change_tracking.baseline = baseline_or_error
+  else
+    session.change_tracking.error = baseline_or_error
+  end
 
   local backend
   backend = self.backend_factory({
@@ -296,6 +309,33 @@ function Manager:add_context(selection)
   return text
 end
 
+function Manager:show_changes(id)
+  local session = self:_session(id)
+  if not session.change_tracking.baseline then
+    error(session.change_tracking.error or "agents.nvim: no change baseline is available", 0)
+  end
+
+  local changes, current = self.change_tracker.changes(session.change_tracking.baseline)
+  self.changes_ui:pick(session, changes, current)
+  return changes
+end
+
+function Manager:next_change()
+  return self.changes_ui:next()
+end
+
+function Manager:previous_change()
+  return self.changes_ui:previous()
+end
+
+function Manager:reset_changes(id)
+  local session = self:_session(id)
+  local baseline = self.change_tracker.capture(session.cwd)
+  session.change_tracking = { baseline = baseline }
+  self.changes_ui:invalidate(session.id)
+  return baseline
+end
+
 function Manager:stop(id)
   local session = self:_session(id)
   if session.status ~= "running" and session.status ~= "starting" then
@@ -321,6 +361,7 @@ function Manager:close_all()
   self.order = {}
   self.active_id = nil
   self.sidebar:hide()
+  self.changes_ui:invalidate()
   for _, session in ipairs(sessions) do
     session.closing = true
     session.backend:destroy()
@@ -350,6 +391,11 @@ function Manager:state()
       buffer = session.buffer,
       status = session.status,
       exit_code = session.exit_code,
+      change_tracking = {
+        available = session.change_tracking.baseline ~= nil,
+        root = session.change_tracking.baseline and session.change_tracking.baseline.root or nil,
+        error = session.change_tracking.error,
+      },
     })
   end
   return {

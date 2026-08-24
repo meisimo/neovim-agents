@@ -7,7 +7,7 @@ interface.
 
 The plugin runs the provider's real interactive CLI in a Neovim terminal. Conversation history
 continues to belong to the provider, so sessions remain available from both Neovim and the native
-CLI.
+CLI. Each session can also review Git workspace changes made since it started.
 
 ## Status
 
@@ -97,6 +97,10 @@ replaced. This first version is event-driven and does not install a filesystem w
 :Agents prev                                 " Select the previous open chat
 :Agents select [session-id]                  " Select by plugin ID or open a picker
 :Agents context                              " Paste the current Visual selection as a file reference
+:Agents changes [session-id]                 " Pick and diff a file changed since the session baseline
+:Agents next-change                          " Review the next changed file
+:Agents prev-change                          " Review the previous changed file
+:Agents reset-changes [session-id]           " Reset a session's workspace baseline
 :Agents stop [session-id]                    " Stop a chat and retain its transcript
 :Agents close [session-id]                   " Stop and remove a chat
 :Agents health                               " Check provider availability
@@ -143,6 +147,19 @@ vim.keymap.set("n", "[a", agents.previous, { desc = "Previous coding-agent chat"
 
 `agents.select(id)`, `agents.stop(id)`, and `agents.close(id)` accept a plugin session ID. Omitting
 the ID uses the active session, except `agents.select()`, which opens the session picker.
+
+Run `:Agents changes` to inspect the active session's current Git worktree differences. The picker
+distinguishes added, modified, deleted, and renamed files. Selecting an entry opens a dedicated
+tab with the session baseline on the left and the editable current file on the right; use standard
+`[c` and `]c` motions for diff hunks or `:Agents prev-change` and `:Agents next-change` for files.
+Pre-existing changes are part of the baseline and are not shown unless they change again. The
+review never changes the real Git index, and `:Agents reset-changes` starts comparison from the
+current workspace state.
+
+Native terminal CLIs do not provide a reliable prompt-completion event, so review is requested
+explicitly and means “workspace changes since this plugin session started,” not guaranteed agent
+attribution. Concurrent user or agent edits are included. Version one requires a Git worktree,
+uses normal Git ignore rules, and leaves agent sessions usable when tracking is unavailable.
 
 ## Provider contract
 
