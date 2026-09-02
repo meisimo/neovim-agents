@@ -50,6 +50,20 @@ The purpose of this document is to serve as a guideline for design and architect
 - Possible future improvements include broader Neovim-version testing and filesystem watchers if
   event-driven refresh latency proves insufficient.
 
+### Inline code suggestions
+
+- **Description**: Manually request code at the current cursor and preview it as non-mutating ghost
+  text before accepting or dismissing it.
+- **Status**: Experimental, opt-in, and implemented for Claude Code only.
+- `:Agents suggest`, `:Agents suggest-accept`, and `:Agents suggest-dismiss` are also exposed through
+  Lua and configurable Normal-mode mappings.
+- Unsaved buffer text is captured with a byte cap. Requests are asynchronous, cancellable,
+  tool-free, and non-persistent, and never reuse an interactive chat session.
+- Editing, moving away, entering Insert mode, leaving the buffer, timeout, and stale callbacks all
+  clear the preview without changing text. Acceptance is one insertion and one undo entry.
+- Requests transmit nearby source to Claude and may incur provider cost. Continuous suggestions,
+  replacements, streaming, multiple candidates, and Codex support are deferred.
+
 ### Copy from file to the chat
 
 - **Description**: A selected region of a file can be easily copy and paste to the chat, that is, if a user selects the from line 6 char 23 to line 14 char 78 in the file `src/module-a/init.py` then he can copy directly to the `chat` with a command or a shortcut the path to that region so the model in that chat may read it later when the prompt is sent.

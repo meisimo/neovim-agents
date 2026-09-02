@@ -13,7 +13,8 @@ CLI. Each session can also review Git workspace changes made since it started.
 
 This project is in early development. It supports starting, resuming, continuing, toggling, and
 stopping native Claude Code and Codex CLI terminal sessions, along with safe automatic refresh of
-loaded file buffers changed outside Neovim and file-range references pasted into the active chat.
+loaded file buffers changed outside Neovim, file-range references pasted into the active chat, and
+experimental opt-in inline code suggestions from Claude Code.
 
 ## Requirements
 
@@ -69,6 +70,18 @@ require("agents").setup({
     enabled = true,
     events = { "BufEnter", "FocusGained", "CursorHold" },
   },
+  suggestions = {
+    enabled = false, -- Experimental and explicitly opt-in
+    provider = "claude",
+    context_lines = 100, -- Lines on each side of the cursor
+    max_context_bytes = 64 * 1024,
+    timeout_ms = 30 * 1000,
+    mappings = { -- Complete Normal-mode key sequences; no shared prefix is added
+      request = "<C-f>s",
+      accept = "<C-f>a",
+      dismiss = "<C-f>x",
+    },
+  },
   providers = {
     claude = {
       command = "claude",
@@ -110,6 +123,9 @@ replaced. This first version is event-driven and does not install a filesystem w
 :Agents next-change                          " Review the next changed file
 :Agents prev-change                          " Review the previous changed file
 :Agents reset-changes [session-id]           " Reset a session's workspace baseline
+:Agents suggest                              " Request an inline code suggestion
+:Agents suggest-accept                       " Insert the visible suggestion
+:Agents suggest-dismiss                      " Cancel or clear the suggestion
 :Agents stop [session-id]                    " Stop a chat and retain its transcript
 :Agents close [session-id]                   " Stop and remove a chat
 :Agents health                               " Check provider availability
@@ -157,6 +173,28 @@ vim.keymap.set("n", "[a", agents.previous, { desc = "Previous coding-agent chat"
 `agents.select(id)`, `agents.stop(id)`, and `agents.close(id)` accept a plugin session ID. Omitting
 the ID uses the active session, except `agents.select()`, which opens the session picker.
 
+## Inline code suggestions
+
+Inline suggestions are a manual, experimental feature and are disabled by default. Enable
+`suggestions.enabled`, place the cursor at the desired insertion boundary in a named, modifiable
+file buffer, and run `:Agents suggest` (default mapping `<C-f>s`). The response appears as ghost
+text without modifying the buffer. Accept it with `:Agents suggest-accept` (`<C-f>a`) or clear it
+with `:Agents suggest-dismiss` (`<C-f>x`). The Lua equivalents are `agents.suggest()`,
+`agents.accept_suggestion()`, and `agents.dismiss_suggestion()`.
+
+The captured column is the byte boundary immediately before the character under a Normal-mode
+cursor. Acceptance inserts exactly there; it does not replace that character or a selection.
+Moving away, editing, entering Insert mode, leaving the buffer, or starting another request clears
+the current suggestion. Acceptance makes one undoable insertion and never writes or reformats the
+file.
+
+The initial implementation requires an installed, authenticated Claude Code CLI. Each request
+starts a fresh asynchronous, tool-free, non-persistent Claude process and sends a capped snapshot
+of the unsaved buffer through stdin. This can incur provider cost and transmits the path, filetype,
+cursor line, and nearby source code to Claude. It does not use a chat session or create resumable
+history. Continuous completion, selection replacement, streaming, and Codex suggestions are not
+supported yet.
+
 Run `:Agents changes` to inspect the active session's current Git worktree differences. The picker
 distinguishes added, modified, deleted, and renamed files. Selecting an entry opens a dedicated
 tab with the session baseline on the left and the editable current file on the right; use standard
@@ -177,6 +215,10 @@ Providers are created with `require("agents.providers.adapter").new()` and expos
 - `is_available(config)` to check its executable
 - `supports(action)` to advertise supported actions
 - `build_command(action, options, config)` to produce an argument vector
+
+A provider may optionally expose `supports_suggestions(config)` and
+`build_suggestion_request(request, config)`. The latter returns a command vector plus stdin, cwd,
+and optional environment; process execution remains in the provider-neutral suggestion controller.
 
 Adapters may also set `context_prefix` when their CLI has stable file-mention syntax. Claude uses
 `@`; the default and Codex use no prefix.

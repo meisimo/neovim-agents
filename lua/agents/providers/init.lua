@@ -17,6 +17,11 @@ local function validate(name, provider)
   if provider.context_prefix ~= nil and type(provider.context_prefix) ~= "string" then
     error(("agents.nvim: provider %q context_prefix must be a string"):format(name))
   end
+  for _, method in ipairs({ "supports_suggestions", "build_suggestion_request" }) do
+    if provider[method] ~= nil and type(provider[method]) ~= "function" then
+      error(("agents.nvim: provider %q %s must be a function"):format(name, method))
+    end
+  end
   return provider
 end
 

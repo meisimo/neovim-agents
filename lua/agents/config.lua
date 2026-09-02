@@ -23,6 +23,18 @@ M.defaults = {
     enabled = true,
     events = { "BufEnter", "FocusGained", "CursorHold" },
   },
+  suggestions = {
+    enabled = false,
+    provider = "claude",
+    context_lines = 100,
+    max_context_bytes = 64 * 1024,
+    timeout_ms = 30 * 1000,
+    mappings = {
+      request = "<C-f>s",
+      accept = "<C-f>a",
+      dismiss = "<C-f>x",
+    },
+  },
   providers = {
     claude = {
       command = "claude",
@@ -91,10 +103,42 @@ local function validate_refresh(options)
   end
 end
 
+local function validate_suggestions(options)
+  local suggestions = options.suggestions
+  if type(suggestions) ~= "table" then
+    error("agents.nvim: suggestions must be a table", 0)
+  end
+  if type(suggestions.enabled) ~= "boolean" then
+    error("agents.nvim: suggestions.enabled must be a boolean", 0)
+  end
+  if type(suggestions.provider) ~= "string" or suggestions.provider == "" then
+    error("agents.nvim: suggestions.provider must be a non-empty string", 0)
+  end
+  for _, name in ipairs({ "context_lines", "max_context_bytes", "timeout_ms" }) do
+    local value = suggestions[name]
+    if type(value) ~= "number" or value <= 0 or value % 1 ~= 0 then
+      error(("agents.nvim: suggestions.%s must be a positive integer"):format(name), 0)
+    end
+  end
+  if type(suggestions.mappings) ~= "table" then
+    error("agents.nvim: suggestions.mappings must be a table", 0)
+  end
+  for _, name in ipairs({ "request", "accept", "dismiss" }) do
+    local mapping = suggestions.mappings[name]
+    if mapping ~= false and (type(mapping) ~= "string" or mapping == "") then
+      error(
+        ("agents.nvim: suggestions.mappings.%s must be a non-empty string or false"):format(name),
+        0
+      )
+    end
+  end
+end
+
 function M.setup(options)
   local resolved = vim.tbl_deep_extend("force", vim.deepcopy(M.defaults), options or {})
   validate_mappings(resolved)
   validate_refresh(resolved)
+  validate_suggestions(resolved)
   M.options = resolved
   return M.options
 end

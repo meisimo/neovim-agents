@@ -31,6 +31,18 @@ SETUP                                                               *agents-setu
       enabled = true,
       events = { "BufEnter", "FocusGained", "CursorHold" },
     },
+    suggestions = {
+      enabled = false,
+      provider = "claude",
+      context_lines = 100,
+      max_context_bytes = 64 * 1024,
+      timeout_ms = 30 * 1000,
+      mappings = {
+        request = "<C-f>s",
+        accept = "<C-f>a",
+        dismiss = "<C-f>x",
+      },
+    },
     providers = {
       claude = { command = "claude", args = {} },
       codex = { command = "codex", args = {} },
@@ -66,6 +78,11 @@ Each session started inside a Git worktree captures the visible workspace as a
 private baseline before its agent process launches. This does not modify the
 real Git index or working files. Change review is explicitly requested because
 native terminal providers do not expose a reliable prompt-completion event.
+
+Inline suggestions are experimental and disabled by default. Their mappings are
+complete Normal-mode key sequences and do not use mappings.prefix. When enabled,
+<C-f>s requests a suggestion, <C-f>a accepts it, and <C-f>x dismisses it.
+Set any suggestion mapping to false to disable it.
 
 ==============================================================================
 COMMANDS                                                         *agents-commands*
@@ -128,6 +145,23 @@ COMMANDS                                                         *agents-command
     Capture the current Git workspace as the selected session's new baseline.
     This invalidates its current navigation list without changing the Git index.
 
+                                                   *:Agents-suggest*
+:Agents suggest
+    Ask the configured suggestion provider for text to insert at the current
+    byte boundary. The current implementation supports Claude Code only. The
+    preview is ghost text and does not modify the buffer.
+
+                                                   *:Agents-suggest-accept*
+:Agents suggest-accept
+    Insert the visible suggestion as one undoable edit. The insertion boundary
+    is immediately before the character under the captured Normal-mode cursor;
+    no character or selection is replaced.
+
+                                                   *:Agents-suggest-dismiss*
+:Agents suggest-dismiss
+    Cancel the pending request or clear its ghost text. This is a quiet no-op
+    when no suggestion exists.
+
                                                    *:Agents-stop*
 :Agents stop [session-id]
     Stop a session while retaining its terminal transcript. The active session
@@ -140,7 +174,8 @@ COMMANDS                                                         *agents-command
 
                                                    *:Agents-health*
 :Agents health
-    Report whether configured providers are executable.
+    Report whether configured providers are executable and, when inline
+    suggestions are enabled, whether their configured provider is available.
 
 The context operation is also available as require("agents").context(). It is
 intended for Visual-mode mappings.
@@ -153,6 +188,17 @@ Ignored files and submodule-internal worktree changes are outside version-one
 tracking. Sessions still open outside Git, but their change command reports the
 tracking error.
 
+Inline suggestions are also available through require("agents").suggest(),
+accept_suggestion(), and dismiss_suggestion(). They require a named, loaded,
+modifiable file buffer. Unsaved contents are authoritative. A request includes
+the absolute path, filetype, cursor line, and capped nearby source context and
+therefore may incur provider cost and disclose source code to Claude. Each
+request uses a fresh asynchronous process with tools and session persistence
+disabled. Moving the cursor, editing, entering Insert mode, leaving the buffer,
+or starting another request cancels or clears the suggestion. Continuous
+completion, selection replacement, and providers other than Claude are not
+supported.
+
 ==============================================================================
 PROVIDERS                                                       *agents-providers*
 
@@ -163,5 +209,8 @@ Providers can share the adapter factory in lua/agents/providers/adapter.lua
 and can be registered with require("agents.providers").register().
 An adapter may set context_prefix when its CLI has stable file-mention syntax;
 the default is an empty prefix.
+Providers may optionally implement supports_suggestions(config) and
+build_suggestion_request(request, config). Suggestion process execution and
+ghost-text rendering remain provider-neutral.
 
 vim:tw=78:ts=8:noet:ft=help:norl:

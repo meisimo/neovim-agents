@@ -40,6 +40,8 @@ The plugin will use a hybrid architecture:
   available.
 - The sidebar, workspace integration, and session state will not depend directly on a particular
   provider or process transport.
+- One-shot inline suggestions use a separate provider-neutral process controller and never reuse a
+  terminal chat or participate in session management.
 
 The session-management layer is not a mandatory proxy for every byte exchanged with a CLI. In
 native mode, the terminal remains both the provider's input surface and its output renderer. The
@@ -178,6 +180,26 @@ A provider may additionally create a structured backend:
 
 Providers are not required to implement structured integration. A new or unknown provider should
 be usable by implementing only native command construction.
+
+A provider may independently advertise one-shot inline suggestions with
+`supports_suggestions(config)` and translate a captured request with
+`build_suggestion_request(request, config)`. That capability is optional and does not imply a
+structured chat backend. The suggestion controller owns process execution, timeout and generation
+state, while the provider owns only CLI arguments and response contract. Claude is the first
+implementation.
+
+### Inline suggestion service
+
+The suggestion service captures unsaved buffer lines around an exact byte insertion boundary,
+constructs a size-capped prompt, and launches a disposable non-interactive provider process. It
+owns at most one request or preview plugin-wide. A monotonic generation plus buffer changed tick,
+window, and cursor checks reject every late or stale result.
+
+Rendering uses one extmark with inline virtual text and virtual lines, so previewing does not touch
+buffer text, undo history, registers, marks, or modified state. Acceptance first invalidates the
+request and removes the extmark, then performs one `nvim_buf_set_text` insertion. Buffer lifecycle
+and editing autocmds clear the state. `lua/agents/process.lua` is the injectable process boundary;
+tests substitute deterministic runners and timers.
 
 ### Backend
 
@@ -421,6 +443,12 @@ lua/agents/
     codex.lua
     claude.lua
 
+  suggestions/
+    init.lua
+    context.lua
+    render.lua
+    utf8.lua
+
   ui/
     sidebar.lua
     tabs.lua
@@ -432,6 +460,7 @@ lua/agents/
     change_tracker.lua
 
   context.lua
+  process.lua
 ```
 
 Only modules needed by an implemented feature should be added. The layout expresses ownership; it

@@ -22,10 +22,14 @@ local actions = {
   "next-change",
   "prev-change",
   "reset-changes",
+  "suggest",
+  "suggest-accept",
+  "suggest-dismiss",
   "health",
 }
 local registered_normal_mappings = {}
 local registered_context_mapping = nil
+local registered_suggestion_mappings = {}
 
 local normal_mapping_actions = {
   toggle = { command = "toggle", desc = "Toggle agent terminal" },
@@ -34,6 +38,12 @@ local normal_mapping_actions = {
   previous_change = { command = "prev-change", desc = "Review previous agent session change" },
   next = { command = "next", desc = "Select next agent session" },
   previous = { command = "prev", desc = "Select previous agent session" },
+}
+
+local suggestion_mapping_actions = {
+  request = { command = "suggest", desc = "Request inline code suggestion" },
+  accept = { command = "suggest-accept", desc = "Accept inline code suggestion" },
+  dismiss = { command = "suggest-dismiss", desc = "Dismiss inline code suggestion" },
 }
 
 local function notify(message, level)
@@ -87,6 +97,22 @@ local function health()
       )
     end
   end
+  if config.options.suggestions.enabled then
+    local name = config.options.suggestions.provider
+    local status = "unsupported"
+    if providers.has(name) then
+      local provider = providers.get(name)
+      local provider_options = config.options.providers[name] or {}
+      if
+        type(provider.supports_suggestions) == "function"
+        and provider.supports_suggestions(provider_options)
+        and type(provider.build_suggestion_request) == "function"
+      then
+        status = provider.is_available(provider_options) and "available" or "not found"
+      end
+    end
+    table.insert(lines, ("inline suggestions: %s (%s)"):format(status, name))
+  end
   notify(table.concat(lines, "\n"))
 end
 
@@ -94,10 +120,7 @@ function M.execute(arguments, command_options)
   local parsed = M.parse(arguments)
   local action = parsed.action
   if not action or action == "" then
-    notify(
-      ("Usage: Agents <%s>"):format(table.concat(actions, "|")),
-      vim.log.levels.WARN
-    )
+    notify(("Usage: Agents <%s>"):format(table.concat(actions, "|")), vim.log.levels.WARN)
     return
   end
 
@@ -145,6 +168,12 @@ function M.execute(arguments, command_options)
     notify("Workspace change baseline reset")
   elseif action == "health" then
     health()
+  elseif action == "suggest" then
+    return require("agents.suggestions").request()
+  elseif action == "suggest-accept" then
+    return require("agents.suggestions").accept()
+  elseif action == "suggest-dismiss" then
+    return require("agents.suggestions").dismiss()
   elseif action == "open" then
     start(action, parsed.provider, {})
   elseif action == "resume" then
@@ -158,7 +187,7 @@ end
 
 function M.execute_safe(arguments, command_options)
   local ok, err = xpcall(function()
-    M.execute(arguments, command_options)
+    return M.execute(arguments, command_options)
   end, debug.traceback)
   if not ok then
     log.error(err)
@@ -191,8 +220,7 @@ function M.complete(argument_lead, command_line)
       or parts[2] == "close"
       or parts[2] == "changes"
       or parts[2] == "reset-changes"
-    )
-    and (#parts == 2 or (#parts == 3 and not command_line:match("%s$")))
+    ) and (#parts == 2 or (#parts == 3 and not command_line:match("%s$")))
   then
     local session_ids = {}
     for _, session in ipairs(session_manager.get():list()) do
@@ -249,6 +277,25 @@ function M.register()
       desc = "Add file range to agent chat",
       silent = true,
     })
+  end
+
+  for _, lhs in pairs(registered_suggestion_mappings) do
+    pcall(vim.keymap.del, "n", lhs)
+  end
+  registered_suggestion_mappings = {}
+  if config.options.suggestions.enabled then
+    for action, mapping in pairs(suggestion_mapping_actions) do
+      local lhs = config.options.suggestions.mappings[action]
+      if lhs then
+        registered_suggestion_mappings[action] = lhs
+        vim.keymap.set("n", lhs, function()
+          M.execute_safe({ mapping.command })
+        end, {
+          desc = mapping.desc,
+          silent = true,
+        })
+      end
+    end
   end
 end
 

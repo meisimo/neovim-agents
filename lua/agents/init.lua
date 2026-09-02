@@ -4,6 +4,7 @@ function M.setup(options)
   local config = require("agents.config").setup(options)
   require("agents.commands").register()
   require("agents.workspace.refresh").setup(config.refresh)
+  require("agents.suggestions").setup()
 end
 
 function M.open(provider)
@@ -64,6 +65,21 @@ end
 
 function M.reset_changes(session_id)
   require("agents.commands").execute({ "reset-changes", session_id })
+end
+
+function M.suggest()
+  local ok, result = require("agents.commands").execute_safe({ "suggest" })
+  return ok and result or false
+end
+
+function M.accept_suggestion()
+  local ok, result = require("agents.commands").execute_safe({ "suggest-accept" })
+  return ok and result or false
+end
+
+function M.dismiss_suggestion()
+  local ok, result = require("agents.commands").execute_safe({ "suggest-dismiss" })
+  return ok and result or false
 end
 
 return M
